@@ -1,0 +1,122 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id              Int               @id @default(autoincrement())
+  username        String            @unique
+  email           String?           @unique
+  password        String
+  role            String            @default("driver")
+  createdAt       DateTime          @default(now())
+  tripsCount      Int               @default(0)
+  scores          Score[]
+  achievements    UserAchievement[]
+  trips           Trip[]
+  settings        Settings?
+  addresses       Address[]
+  profileComments Comment[]         @relation("ProfileComments")
+  avatarUrl       String?
+  bio             String?
+  bannerUrl       String?
+  customTags      String?
+  highlightedAchievements String?
+}
+
+model Score {
+  id        Int      @id @default(autoincrement())
+  points    Int
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  updatedAt DateTime @updatedAt
+}
+
+model Achievement {
+  id          Int               @id @default(autoincrement())
+  key         String            @unique
+  title       String
+  description String
+  emoji       String
+  glowColor   String?
+  users       UserAchievement[]
+}
+
+model UserAchievement {
+  id            Int         @id @default(autoincrement())
+  userId        Int
+  achievementId Int
+  unlockedAt    DateTime    @default(now())
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, achievementId])
+}
+
+model Trip {
+  id              Int         @id @default(autoincrement())
+  userId          Int
+  distanceKm      Float
+  durationMin     Int
+  avgSpeed        Float?
+  xpEarned        Int
+  createdAt       DateTime    @default(now())
+  name            String?
+  startLocation   String?
+  endLocation     String?
+  passengerCount  Int         @default(1)
+  pointsGenerated Int         @default(0)
+  waypoints       Waypoint[]
+  media           TripMedia[]
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Address {
+  id         Int    @id @default(autoincrement())
+  userId     Int
+  street     String
+  city       String
+  state      String
+  postalCode String
+  user       User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Comment {
+  id            Int      @id @default(autoincrement())
+  profileUserId Int
+  authorName    String
+  content       String
+  createdAt     DateTime @default(now())
+  profileUser   User     @relation("ProfileComments", fields: [profileUserId], references: [id], onDelete: Cascade)
+}
+
+model Waypoint {
+  id      Int    @id @default(autoincrement())
+  tripId  Int
+  address String
+  order   Int
+  trip    Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
+}
+
+model TripMedia {
+  id        Int      @id @default(autoincrement())
+  tripId    Int
+  type      String   // "text", "image", "audio"
+  content   String
+  createdAt DateTime @default(now())
+  trip      Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+}
+
+model Settings {
+  id                Int     @id @default(autoincrement())
+  userId            Int     @unique
+  pushNotifications Boolean @default(true)
+  xpAlerts          Boolean @default(true)
+  socialRanking     Boolean @default(false)
+  publicProfile     Boolean @default(true)
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

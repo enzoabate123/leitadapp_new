@@ -1,0 +1,21 @@
+{
+  "name": "dashboard-frontend",
+  "version": "1.0.0",
+  "description": "Minimal Vite + Vue 3 car dashboard with Socket.io client",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "leaflet": "^1.9.4",
+    "socket.io-client": "^4.7.5",
+    "vue": "^3.4.27",
+    "vue-router": "^4.6.4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.4",
+    "vite": "^5.2.11"
+  }
+}
