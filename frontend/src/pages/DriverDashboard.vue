@@ -781,6 +781,7 @@ const sfxVolume = ref(parseFloat(localStorage.getItem('sfxVolumeMultiplier') ?? 
 const musicVolume = ref(parseFloat(localStorage.getItem('musicVolume') ?? '0.3'));
 
 function updateVolume(type) {
+  console.log('[DriverDashboard] updateVolume called for type:', type, 'sfxVolume:', sfxVolume.value, 'musicVolume:', musicVolume.value);
   if (type === 'sfx') {
     localStorage.setItem('sfxVolumeMultiplier', sfxVolume.value.toString());
     window.dispatchEvent(new CustomEvent('volume-change', { detail: { type: 'sfx', value: sfxVolume.value } }));

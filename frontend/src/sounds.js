@@ -3,15 +3,14 @@
 // Inspired by Wii, Switch, and GameCube menu aesthetics.
 
 let audioCtx = null;
-let sfxVolumeMultiplier = parseFloat(localStorage.getItem('sfxVolumeMultiplier') ?? '0.5');
-
 export function setSfxVolume(vol) {
-  sfxVolumeMultiplier = parseFloat(vol);
-  localStorage.setItem('sfxVolumeMultiplier', sfxVolumeMultiplier.toString());
+  const parsed = parseFloat(vol);
+  console.log('[sounds.js] setSfxVolume called with:', parsed);
+  localStorage.setItem('sfxVolumeMultiplier', parsed.toString());
 }
 
 export function getSfxVolume() {
-  return sfxVolumeMultiplier;
+  return parseFloat(localStorage.getItem('sfxVolumeMultiplier') ?? '0.5');
 }
 
 function getCtx() {
@@ -23,6 +22,9 @@ function getCtx() {
 
 // Helper: play a tone with envelope
 function playTone({ freq = 440, type = 'sine', duration = 0.08, volume = 0.15, delay = 0, detune = 0 } = {}) {
+  const sfxVolumeMultiplier = getSfxVolume();
+  if (sfxVolumeMultiplier <= 0) return; // Muted
+
   const ctx = getCtx();
   const t = ctx.currentTime + delay;
 
@@ -125,6 +127,7 @@ export function attachHoverSounds(rootEl) {
 
 if (typeof window !== 'undefined') {
   window.addEventListener('volume-change', (e) => {
+    console.log('[sounds.js] Received volume-change event:', e.detail);
     if (e.detail && e.detail.type === 'sfx') {
       setSfxVolume(e.detail.value);
     }
