@@ -14,6 +14,10 @@ const __dirname = path.dirname(__filename);
 
 // ─── Setup ───────────────────────────────────────────────
 const fastify = Fastify({ logger: false });
+fastify.setErrorHandler((error, request, reply) => {
+  console.error(`❌ [Error] ${request.method} ${request.url}:`, error);
+  reply.status(error.statusCode || 500).send({ error: error.message });
+});
 const prisma = new PrismaClient();
 
 async function syncUserScore(userId) {

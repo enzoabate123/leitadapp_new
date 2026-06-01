@@ -39,7 +39,10 @@ function showToast(msg, type = 'info') {
 }
 
 async function apiFetch(endpoint, options = {}) {
-  const headers = { 'Content-Type': 'application/json', ...options.headers };
+  const headers = { ...options.headers };
+  if (options.body && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
+  }
   if (token.value) headers['Authorization'] = `Bearer ${token.value}`;
   const res = await fetch(`${API_URL}${endpoint}`, { ...options, headers });
   if (!res.ok) throw new Error(await res.text());
