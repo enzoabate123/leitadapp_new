@@ -151,21 +151,30 @@ onUnmounted(() => {
   bottom: 24px;
   left: 24px;
   z-index: 999999;
-  width: 280px;
+  width: 62px;
+  height: 62px;
+  box-sizing: border-box;
   background: rgba(255, 255, 255, 0.25);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.45);
-  border-radius: 24px;
+  border-radius: 20px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15), 
               inset 0 1px 1px rgba(255, 255, 255, 0.5);
-  padding: 10px 14px;
+  padding: 10px;
+  overflow: hidden;
   user-select: none;
   animation: slide-in 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  transition: all 0.3s ease;
+  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+              padding 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+              background 0.3s, 
+              transform 0.3s, 
+              box-shadow 0.3s;
 }
 
 .music-widget:hover {
+  width: 280px;
+  padding: 10px 14px;
   background: rgba(255, 255, 255, 0.35);
   transform: translateY(-2px);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2), 
@@ -176,6 +185,8 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
+  width: 252px;
+  flex-shrink: 0;
 }
 
 .cover-art {
@@ -211,6 +222,12 @@ onUnmounted(() => {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.music-widget:hover .track-info {
+  opacity: 1;
 }
 
 .track-status {
@@ -242,8 +259,13 @@ onUnmounted(() => {
   justify-content: center;
   cursor: pointer;
   box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease, opacity 0.3s ease;
   flex-shrink: 0;
+  opacity: 0;
+}
+
+.music-widget:hover .control-btn {
+  opacity: 1;
 }
 
 .control-btn:hover {
