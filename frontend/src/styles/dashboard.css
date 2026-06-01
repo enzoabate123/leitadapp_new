@@ -1,0 +1,635 @@
+/* Grid 3x3 para o Dashboard */
+.home-dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 16px;
+  flex: 1;
+}
+
+.grid-item {
+  background: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 24px;
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  transition: all 0.25s;
+  overflow: hidden;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.02);
+}
+.grid-item:hover {
+  background: white;
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(0,0,0,0.05);
+}
+
+/* Widgets específicos */
+.item-map {
+  grid-column: span 2;
+  grid-row: span 2;
+  padding: 0;
+  border-color: rgba(0, 0, 0, 0.05);
+  box-shadow: none;
+  position: relative;
+}
+
+.item-speed {
+  grid-column: 3;
+  grid-row: 1;
+}
+
+.item-music {
+  grid-column: 3;
+  grid-row: 2;
+}
+
+.item-passengers {
+  grid-column: 1;
+  grid-row: 3;
+}
+
+.item-ranking {
+  grid-column: span 2;
+  grid-row: 3;
+}
+
+/* Detalhes internos do Mapa */
+.map-container {
+  width: 100%;
+  height: 100%;
+  border-radius: 24px;
+  background: #111827;
+  z-index: 1;
+}
+.map-overlay {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 6px 12px;
+  border-radius: 12px;
+  color: #fff;
+  z-index: 10;
+}
+.map-street {
+  font-size: 12px;
+  font-weight: 700;
+}
+.map-eta {
+  font-size: 9px;
+  color: #94a3b8;
+}
+
+/* Widgets Gerais */
+.widget-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+/* Velocidade */
+.widget-main-value {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+.widget-main-value .number {
+  font-size: 38px;
+  font-weight: 800;
+  color: #1e293b;
+  line-height: 1;
+}
+.widget-main-value .unit {
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+}
+.speed-bar-container {
+  height: 6px;
+  background-color: #f1f5f9;
+  border-radius: 3px;
+  margin: 6px 0;
+  overflow: hidden;
+}
+.speed-bar-progress {
+  height: 100%;
+  background: linear-gradient(90deg, #60a5fa, #3b82f6);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+.widget-subtext {
+  font-size: 10px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+/* Tocando agora */
+.music-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.music-disc {
+  width: 32px;
+  height: 32px;
+  background-color: #f1f5f9;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+.music-disc.spinning {
+  animation: spin 6s linear infinite;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.music-info {
+  min-width: 0;
+  flex: 1;
+}
+.song-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.artist-name {
+  font-size: 10px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+.music-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.music-btn {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-size: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.music-progress {
+  flex: 1;
+  height: 4px;
+  background-color: #f1f5f9;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.music-progress-bar {
+  height: 100%;
+  background-color: #3b82f6;
+}
+
+/* Passageiros */
+.passengers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.passenger-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #ffffff;
+  padding: 6px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.7);
+}
+.passenger-avatar {
+  font-size: 14px;
+}
+.passenger-details {
+  flex: 1;
+}
+.passenger-name {
+  font-size: 11px;
+  font-weight: 700;
+  color: #334155;
+}
+.passenger-role {
+  font-size: 8px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+.passenger-status {
+  font-size: 9px;
+  font-weight: 700;
+  color: #10b981;
+}
+
+/* Ranking */
+.ranking-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ranking-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-radius: 12px;
+  margin-bottom: 2px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  border: 1px solid transparent;
+  color: #475569;
+}
+.ranking-row:hover {
+  background-color: rgba(59, 130, 246, 0.05);
+  border-color: rgba(59, 130, 246, 0.12);
+}
+.ranking-row.active-user {
+  background-color: rgba(59, 130, 246, 0.1);
+  border-color: rgba(59, 130, 246, 0.2);
+  font-weight: 700;
+}
+.ranking-row.active-user span {
+  color: #2563eb !important;
+}
+.ranking-position {
+  width: 24px;
+}
+.ranking-name {
+  flex: 1;
+}
+.ranking-points {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Modal de Detalhes do Troféu */
+.trophy-details-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20000;
+}
+.trophy-details-card {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 28px;
+  width: 90%;
+  max-width: 400px;
+  padding: 32px 24px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  position: relative;
+  border: 1px solid rgba(255,255,255,0.6);
+}
+.trophy-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.05);
+  border: none;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+}
+.trophy-close:hover {
+  background: rgba(0,0,0,0.15);
+}
+.trophy-emoji-large {
+  font-size: 4rem;
+  margin-bottom: 16px;
+  position: relative;
+}
+.modal-crown {
+  position: absolute;
+  top: -16px;
+  right: -20px;
+  font-size: 24px;
+  filter: drop-shadow(0 4px 6px rgba(0,0,0,0.25));
+}
+.trophy-title {
+  font-size: 20px;
+  font-weight: 800;
+  color: #1e293b;
+  margin: 0 0 10px 0;
+}
+.trophy-desc {
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.5;
+  margin: 0 0 20px 0;
+}
+.trophy-first-winner-badge {
+  background: rgba(251, 191, 36, 0.15);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  color: #b45309;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.first-winner-name {
+  font-weight: 800;
+  text-decoration: underline;
+}
+
+/* Transição Vue Zoom */
+.trophy-zoom-enter-active, .trophy-zoom-leave-active {
+  transition: all 0.3s ease;
+}
+.trophy-zoom-enter-active .trophy-details-card {
+  animation: trophy-bounce-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+.trophy-zoom-leave-active .trophy-details-card {
+  animation: trophy-bounce-out 0.25s ease forwards;
+}
+.trophy-zoom-enter-from, .trophy-zoom-leave-to {
+  opacity: 0;
+}
+
+@keyframes trophy-bounce-in {
+  0% { transform: scale(0.6); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes trophy-bounce-out {
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.7); opacity: 0; }
+}
+
+/* Layout customizado para a página inicial */
+.home-dashboard-grid .item-map {
+  grid-column: span 2;
+  grid-row: span 3;
+}
+.home-dashboard-grid:not(.has-active-trip) .item-ranking {
+  grid-column: 3;
+  grid-row: span 3;
+}
+
+/* Layout quando a viagem está ativa */
+.home-dashboard-grid .item-current-passengers {
+  grid-column: 3;
+  grid-row: 1;
+}
+.home-dashboard-grid.has-active-trip .item-ranking {
+  grid-column: 3;
+  grid-row: 2 / span 2;
+}
+
+/* Overlays Flutuantes no Mapa */
+.map-floating-bottom {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+}
+.premium-floating-btn {
+  padding: 10px 24px;
+  border-radius: 99px;
+  font-size: 13px;
+  font-weight: 700;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.premium-floating-btn.start {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.8), rgba(5, 150, 105, 0.8));
+}
+.premium-floating-btn.start:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px rgba(16, 185, 129, 0.4);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.95), rgba(5, 150, 105, 0.95));
+}
+.premium-floating-btn.stop {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.8), rgba(220, 38, 38, 0.8));
+}
+.premium-floating-btn.stop:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px rgba(239, 68, 68, 0.4);
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.95), rgba(220, 38, 38, 0.95));
+}
+.btn-icon {
+  font-size: 10px;
+}
+
+.map-route-overlay {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 8px 16px;
+  border-radius: 99px;
+  color: white;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+  white-space: nowrap;
+}
+.route-label {
+  font-size: 8px;
+  font-weight: 800;
+  background: #2563eb;
+  padding: 2px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.05em;
+}
+.route-path {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.map-floating-music {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 10px 14px;
+  width: 200px;
+  z-index: 1000;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  color: white;
+}
+.music-content-compact {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.music-disc-compact {
+  font-size: 16px;
+  animation: compact-spin 4s linear infinite;
+  animation-play-state: paused;
+}
+.spinning {
+  animation-play-state: running !important;
+}
+@keyframes compact-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.music-info-compact {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+.song-title-compact {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 700;
+  color: white;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.artist-name-compact {
+  margin: 0;
+  font-size: 8px;
+  color: rgba(255, 255, 255, 0.6);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.music-btn-compact {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: white;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 10px;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+.music-btn-compact:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+.music-progress-compact {
+  height: 3px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+.music-progress-bar-compact {
+  height: 100%;
+  background: #3b82f6;
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+
+.map-floating-qr-widget {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1000;
+}
+
+.qr-widget-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.qr-widget-btn:hover {
+  transform: translateY(-2px);
+  background: rgba(15, 23, 42, 0.95);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
+}
+
+.suggestions-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  margin-top: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 20000;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+.suggestion-item {
+  padding: 10px 14px;
+  font-size: 12px;
+  color: #334155;
+  cursor: pointer;
+  text-align: left;
+  border-bottom: 1px solid #f1f5f9;
+  transition: background 0.15s ease;
+}
+
+.suggestion-item:last-child {
+  border-bottom: none;
+}
+
+.suggestion-item:hover {
+  background: #f1f5f9;
+}

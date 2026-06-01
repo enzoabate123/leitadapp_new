@@ -75,6 +75,11 @@ model Trip {
   waypoints       Waypoint[]
   media           TripMedia[]
   user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  startLat        Float?
+  startLon        Float?
+  endLat          Float?
+  endLon          Float?
+  routeCoords     String?
 }
 
 model Address {

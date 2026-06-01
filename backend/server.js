@@ -353,6 +353,15 @@ fastify.get('/api/me', { preHandler: authenticate }, async (request) => {
   const totalPassengers = trips.reduce((acc, t) => acc + t.passengerCount, 0);
   const tripsCount = trips.length;
 
+  let longestTrip = null;
+  if (trips.length > 0) {
+    const maxTrip = trips.reduce((max, trip) => trip.distanceKm > max.distanceKm ? trip : max, trips[0]);
+    longestTrip = await prisma.trip.findUnique({
+      where: { id: maxTrip.id },
+      include: { waypoints: { orderBy: { order: 'asc' } } }
+    });
+  }
+
   return {
     ...user,
     totalPoints,
@@ -361,6 +370,7 @@ fastify.get('/api/me', { preHandler: authenticate }, async (request) => {
     totalDistanceKm,
     totalHours,
     longestTripKm,
+    longestTrip,
     totalPassengers,
     tripsCount
   };
@@ -533,6 +543,15 @@ fastify.get('/api/users/:id/profile', { preHandler: authenticate }, async (reque
   const longestTripKm = trips.length > 0 ? Math.max(...trips.map(t => t.distanceKm)) : 0;
   const totalPassengers = trips.reduce((acc, t) => acc + t.passengerCount, 0);
   const tripsCount = trips.length;
+
+  let longestTrip = null;
+  if (trips.length > 0) {
+    const maxTrip = trips.reduce((max, trip) => trip.distanceKm > max.distanceKm ? trip : max, trips[0]);
+    longestTrip = await prisma.trip.findUnique({
+      where: { id: maxTrip.id },
+      include: { waypoints: { orderBy: { order: 'asc' } } }
+    });
+  }
   
   return { 
     ...user, 
@@ -542,6 +561,7 @@ fastify.get('/api/users/:id/profile', { preHandler: authenticate }, async (reque
     totalDistanceKm,
     totalHours,
     longestTripKm,
+    longestTrip,
     totalPassengers
   };
 });
@@ -549,7 +569,20 @@ fastify.get('/api/users/:id/profile', { preHandler: authenticate }, async (reque
 // POST /api/trips
 fastify.post('/api/trips', { preHandler: authenticate }, async (request) => {
   const userId = request.userId;
-  const { distanceKm, durationMin, durationSec, avgSpeed, passengerCount, startLocation, endLocation } = request.body || {};
+  const { 
+    distanceKm, 
+    durationMin, 
+    durationSec, 
+    avgSpeed, 
+    passengerCount, 
+    startLocation, 
+    endLocation,
+    startLat,
+    startLon,
+    endLat,
+    endLon,
+    routeCoords
+  } = request.body || {};
 
   if (distanceKm == null || durationMin == null) {
     return { error: 'distanceKm e durationMin são obrigatórios' };
@@ -569,6 +602,11 @@ fastify.post('/api/trips', { preHandler: authenticate }, async (request) => {
       startLocation: startLocation || null,
       endLocation: endLocation || null,
       xpEarned,
+      startLat: startLat != null ? parseFloat(startLat) : null,
+      startLon: startLon != null ? parseFloat(startLon) : null,
+      endLat: endLat != null ? parseFloat(endLat) : null,
+      endLon: endLon != null ? parseFloat(endLon) : null,
+      routeCoords: routeCoords || null,
     },
   });
 
@@ -835,7 +873,12 @@ fastify.post('/api/admin/trips', { preHandler: authenticateAdmin }, async (reque
     pointsGenerated,
     createdAt,
     passengerIds,
-    waypoints
+    waypoints,
+    startLat,
+    startLon,
+    endLat,
+    endLon,
+    routeCoords
   } = request.body || {};
 
   if (!userId || distanceKm == null || durationMin == null) {
@@ -864,6 +907,11 @@ fastify.post('/api/admin/trips', { preHandler: authenticateAdmin }, async (reque
       name: name || null,
       startLocation: startLocation || null,
       endLocation: endLocation || null,
+      startLat: startLat != null ? parseFloat(startLat) : null,
+      startLon: startLon != null ? parseFloat(startLon) : null,
+      endLat: endLat != null ? parseFloat(endLat) : null,
+      endLon: endLon != null ? parseFloat(endLon) : null,
+      routeCoords: routeCoords || null,
       passengerCount: passengerUsers.length || 1,
       pointsGenerated: xpEarned,
       createdAt: parsedDate,
@@ -909,7 +957,12 @@ fastify.put('/api/admin/trips/:id', { preHandler: authenticateAdmin }, async (re
     pointsGenerated,
     createdAt,
     passengerIds,
-    waypoints
+    waypoints,
+    startLat,
+    startLon,
+    endLat,
+    endLon,
+    routeCoords
   } = request.body || {};
 
   try {
@@ -933,6 +986,11 @@ fastify.put('/api/admin/trips/:id', { preHandler: authenticateAdmin }, async (re
     if (name !== undefined) updateData.name = name || null;
     if (startLocation !== undefined) updateData.startLocation = startLocation || null;
     if (endLocation !== undefined) updateData.endLocation = endLocation || null;
+    if (startLat !== undefined) updateData.startLat = startLat != null ? parseFloat(startLat) : null;
+    if (startLon !== undefined) updateData.startLon = startLon != null ? parseFloat(startLon) : null;
+    if (endLat !== undefined) updateData.endLat = endLat != null ? parseFloat(endLat) : null;
+    if (endLon !== undefined) updateData.endLon = endLon != null ? parseFloat(endLon) : null;
+    if (routeCoords !== undefined) updateData.routeCoords = routeCoords || null;
     if (createdAt !== undefined) updateData.createdAt = new Date(createdAt);
     if (userId !== undefined) updateData.userId = parseInt(userId, 10);
 

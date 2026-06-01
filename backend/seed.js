@@ -160,6 +160,11 @@ async function main() {
       endLocation: 'Av. Paulista, 1000',
       passengerCount: 2,
       pointsGenerated: 152,
+      startLat: -23.561684,
+      startLon: -46.656139,
+      endLat: -23.55052,
+      endLon: -46.633308,
+      routeCoords: JSON.stringify([[-23.561684,-46.656139],[-23.554471,-46.643324],[-23.55052,-46.633308]])
     }
   });
 
