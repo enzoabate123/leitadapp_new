@@ -1,7 +1,8 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { applyGlobalBackground } from '../globalState';
 import { useRouter } from 'vue-router';
+import { sfxSuccess, sfxError, sfxNavigate, sfxModalOpen, sfxModalClose } from '../sounds';
 
 const router = useRouter();
 
@@ -95,12 +96,14 @@ const users = ref([]);
 const trips = ref([]);
 const achievements = ref([]);
 const userAchievements = ref([]); // for listing and revoking
+const backgrounds = ref([]);
 
 // UI state
 const searchQueries = ref({
   users: '',
   trips: '',
-  achievements: ''
+  achievements: '',
+  backgrounds: ''
 });
 
 // Toasts
@@ -109,6 +112,7 @@ let toastId = 0;
 function showToast(msg, type = 'success') {
   const id = ++toastId;
   toasts.value.push({ id, msg, type });
+  if (type === 'error') sfxError(); else sfxSuccess();
   setTimeout(() => {
     toasts.value = toasts.value.filter(t => t.id !== id);
   }, 4000);
@@ -121,14 +125,42 @@ const modalTargetId = ref(null); // ID of entity being edited
 const parentTargetId = ref(null); // Parent ID (e.g. userId for address)
 
 // Modal Forms
-const userForm = ref({ username: '', email: '', role: 'driver', tripsCount: 0, password: '' });
-const tripForm = ref({ userId: '', distanceKm: 0, durationMin: 0, avgSpeed: 0, name: '', startLocation: '', endLocation: '', passengerCount: 1, pointsGenerated: 0 });
+const userForm = ref({ username: '', email: '', role: 'driver', tripsCount: 0, password: '', avatarUrl: '', bannerUrl: '' });
+const tripForm = ref({ userId: '', distanceKm: 0, durationMin: 0, avgSpeed: 0, name: '', startLocation: '', endLocation: '', passengerCount: 1, pointsGenerated: 0, createdAt: '', passengerIds: [], waypoints: [] });
+
+function addFormWaypoint() {
+  tripForm.value.waypoints.push('');
+}
+
+function removeFormWaypoint(index) {
+  tripForm.value.waypoints.splice(index, 1);
+}
 const achievementForm = ref({ key: '', title: '', description: '', emoji: '🏆', glowColor: 'cyan' });
 const addressForm = ref({ street: '', city: '', state: '', postalCode: '' });
 const commentForm = ref({ authorName: '', content: '' });
 const waypointForm = ref({ address: '', order: 1 });
 const mediaForm = ref({ type: 'text', content: '' });
 const assignmentForm = ref({ userId: '', achievementId: '' });
+
+// Computed: filter the userAchievements table by the selected user in the assignment form
+const filteredUserAchievements = computed(() => {
+  if (!assignmentForm.value.userId) return userAchievements.value;
+  const uid = parseInt(assignmentForm.value.userId, 10);
+  return userAchievements.value.filter(ua => ua.userId === uid);
+});
+
+// Auto-calculate XP when distance/duration change in create mode
+watch(
+  () => [tripForm.value.distanceKm, tripForm.value.durationMin],
+  ([dist, dur]) => {
+    if (modalMode.value === 'create' && activeModal.value === 'trip') {
+      const d = parseFloat(dist) || 0;
+      const m = parseInt(dur, 10) || 0;
+      tripForm.value.pointsGenerated = Math.round(d * 1000) + (m * 60);
+    }
+  }
+);
+const backgroundForm = ref({ key: '', title: '', url: '' });
 
 // Expanded rows
 const expandedUsers = ref(new Set());
@@ -216,8 +248,10 @@ async function loadAllData() {
       loadUsers(),
       loadTrips(),
       loadAchievements(),
-      loadUserAchievements()
+      loadBackgrounds()
     ]);
+    // loadUserAchievements depends on users.value being populated, so run after
+    await loadUserAchievements();
   } catch (err) {
     showToast('Erro ao carregar dados do banco: ' + err.message, 'error');
   }
@@ -233,6 +267,10 @@ async function loadTrips() {
 
 async function loadAchievements() {
   achievements.value = await apiFetch('/api/admin/achievements');
+}
+
+async function loadBackgrounds() {
+  backgrounds.value = await apiFetch('/api/admin/backgrounds');
 }
 
 async function loadUserAchievements() {
@@ -261,7 +299,7 @@ function openUserModal(mode, user = null) {
   modalMode.value = mode;
   activeModal.value = 'user';
   if (mode === 'create') {
-    userForm.value = { username: '', email: '', role: 'driver', tripsCount: 0, password: '' };
+    userForm.value = { username: '', email: '', role: 'driver', tripsCount: 0, password: '', avatarUrl: '', bannerUrl: '' };
   } else if (mode === 'update' && user) {
     modalTargetId.value = user.id;
     userForm.value = {
@@ -269,6 +307,8 @@ function openUserModal(mode, user = null) {
       email: user.email || '',
       role: user.role,
       tripsCount: user.tripsCount || 0,
+      avatarUrl: user.avatarUrl || '',
+      bannerUrl: user.bannerUrl || '',
       password: ''
     };
   }
@@ -389,10 +429,26 @@ function openTripModal(mode, trip = null) {
       startLocation: '',
       endLocation: '',
       passengerCount: 1,
-      pointsGenerated: 10
+      pointsGenerated: 10,
+      createdAt: new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
+      passengerIds: [],
+      waypoints: []
     };
   } else if (mode === 'update' && trip) {
     modalTargetId.value = trip.id;
+    
+    const localIsoDate = trip.createdAt 
+      ? new Date(new Date(trip.createdAt).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+      : new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+      
+    const pIds = trip.media 
+      ? trip.media.filter(m => m.type === 'passenger').map(m => users.value.find(u => u.username === m.content)?.id).filter(Boolean) 
+      : [];
+      
+    const wpts = trip.waypoints 
+      ? [...trip.waypoints].sort((a,b) => a.order - b.order).map(w => w.address) 
+      : [];
+
     tripForm.value = {
       userId: trip.userId,
       distanceKm: trip.distanceKm,
@@ -402,7 +458,10 @@ function openTripModal(mode, trip = null) {
       startLocation: trip.startLocation || '',
       endLocation: trip.endLocation || '',
       passengerCount: trip.passengerCount,
-      pointsGenerated: trip.pointsGenerated
+      pointsGenerated: trip.pointsGenerated,
+      createdAt: localIsoDate,
+      passengerIds: pIds,
+      waypoints: wpts
     };
   }
 }
@@ -414,8 +473,11 @@ async function submitTrip() {
     payload.distanceKm = parseFloat(payload.distanceKm);
     payload.durationMin = parseInt(payload.durationMin, 10);
     payload.avgSpeed = payload.avgSpeed ? parseFloat(payload.avgSpeed) : null;
-    payload.passengerCount = parseInt(payload.passengerCount, 10);
+    payload.passengerIds = tripForm.value.passengerIds.map(id => parseInt(id, 10));
+    payload.passengerCount = payload.passengerIds.length || 1;
     payload.pointsGenerated = parseInt(payload.pointsGenerated, 10);
+    payload.waypoints = tripForm.value.waypoints.filter(w => w.trim() !== '');
+    payload.createdAt = tripForm.value.createdAt ? new Date(tripForm.value.createdAt).toISOString() : new Date().toISOString();
 
     if (modalMode.value === 'create') {
       await apiFetch('/api/admin/trips', {
@@ -569,6 +631,49 @@ async function deleteAchievement(id) {
   }
 }
 
+// Backgrounds
+function openBackgroundModal(mode, bg = null) {
+  modalMode.value = mode;
+  activeModal.value = 'background';
+  if (mode === 'create') {
+    backgroundForm.value = { key: '', title: '', url: '' };
+  } else if (mode === 'update' && bg) {
+    modalTargetId.value = bg.id;
+    backgroundForm.value = {
+      key: bg.key,
+      title: bg.title,
+      url: bg.url
+    };
+  }
+}
+
+async function submitBackground() {
+  try {
+    if (modalMode.value === 'create') {
+      await apiFetch('/api/admin/backgrounds', {
+        method: 'POST',
+        body: JSON.stringify(backgroundForm.value)
+      });
+      showToast('Imagem de fundo adicionada!');
+    }
+    activeModal.value = null;
+    await loadBackgrounds();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function deleteBackground(id) {
+  if (!confirm('Deseja excluir esta imagem de fundo?')) return;
+  try {
+    await apiFetch(`/api/admin/backgrounds/${id}`, { method: 'DELETE' });
+    showToast('Imagem de fundo excluída!');
+    await loadBackgrounds();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
 // Deliver Achievement to User
 async function assignAchievement() {
   if (!assignmentForm.value.userId || !assignmentForm.value.achievementId) {
@@ -630,6 +735,15 @@ onMounted(async () => {
   applyGlobalBackground(selectedBgType.value, selectedCustomBgUrl.value);
 });
 
+// SFX: play navigate sound when switching tabs
+watch(activeTab, () => { sfxNavigate(); });
+
+// SFX: play modal open/close sounds
+watch(activeModal, (newVal, oldVal) => {
+  if (newVal && !oldVal) sfxModalOpen();
+  else if (!newVal && oldVal) sfxModalClose();
+});
+
 onUnmounted(() => {
   window.removeEventListener('storage', handleStorageChange);
   window.removeEventListener('click', closeContextMenu);
@@ -688,18 +802,7 @@ onUnmounted(() => {
     <!-- Main Panel (if logged in and admin) -->
     <div v-else-if="isAdmin" class="xp-desktop-layout animate-fade-in">
       <div class="xp-window main-window">
-        <!-- Title Bar -->
-        <header class="xp-titlebar">
-          <div class="titlebar-logo">
-            <span class="logo-icon">📂</span>
-            <h2>Console do Administrador [LeitadApp CMS - Database Viewer]</h2>
-          </div>
-          <div class="window-controls">
-            <button class="win-btn min">_</button>
-            <button class="win-btn max">⬜</button>
-            <button @click="handleLogout" class="win-btn close" title="Sair do Console">X</button>
-          </div>
-        </header>
+
 
         <!-- Menu bar -->
         <div class="xp-menubar">
@@ -745,6 +848,12 @@ onUnmounted(() => {
                   >
                     👑 Entregar Conquistas
                   </button>
+                  <button 
+                    :class="['sidebar-nav-item', activeTab === 'backgrounds' ? 'active' : '']" 
+                    @click="activeTab = 'backgrounds'"
+                  >
+                    🖼️ Imagens de Fundo
+                  </button>
                 </div>
               </div>
 
@@ -771,7 +880,7 @@ onUnmounted(() => {
                 <div class="pane-header-xp">
                   <div>
                     <h3>Tabela de Contas de Usuários</h3>
-                    <p>Visualização e edição do banco de dados relacional de motoristas.</p>
+                    <p>Visualização e edição do banco de dados relacional de usuários.</p>
                   </div>
                   <button @click="openUserModal('create')" class="btn-xp green-btn">➕ Adicionar Novo Usuário</button>
                 </div>
@@ -876,7 +985,7 @@ onUnmounted(() => {
 
                 <div class="search-bar-xp">
                   <label>Pesquisar Corridas:</label>
-                  <input v-model="searchQueries.trips" type="text" placeholder="Filtre por ID da viagem, motorista ou ponto de partida..." />
+                  <input v-model="searchQueries.trips" type="text" placeholder="Filtre por ID da viagem, usuário ou ponto de partida..." />
                 </div>
 
                 <div class="xp-table-container">
@@ -885,7 +994,7 @@ onUnmounted(() => {
                       <tr>
                         <th></th>
                         <th>ID</th>
-                        <th>Motorista</th>
+                        <th>Usuário</th>
                         <th>Nome Opcional</th>
                         <th>Distância</th>
                         <th>Duração</th>
@@ -974,7 +1083,7 @@ onUnmounted(() => {
                 <div class="pane-header-xp">
                   <div>
                     <h3>Classes de Conquistas</h3>
-                    <p>Configure conquistas globais para motoristas que cumprem marcos de trânsito.</p>
+                    <p>Configure conquistas globais para usuários que cumprem marcos de trânsito.</p>
                   </div>
                   <button @click="openAchievementModal('create')" class="btn-xp green-btn">➕ Nova Conquista</button>
                 </div>
@@ -1013,7 +1122,7 @@ onUnmounted(() => {
                 <div class="pane-header-xp">
                   <div>
                     <h3>Painel de Atribuição Manual</h3>
-                    <p>Entregue ou revogue medalhas para perfis de motoristas em tempo real.</p>
+                    <p>Entregue ou revogue medalhas para perfis de usuários em tempo real.</p>
                   </div>
                 </div>
 
@@ -1023,7 +1132,7 @@ onUnmounted(() => {
                   <div class="xp-card-body">
                     <form @submit.prevent="assignAchievement" class="xp-grid-form">
                       <div class="input-group">
-                        <label>Selecionar Motorista:</label>
+                        <label>Selecionar Usuário:</label>
                         <select v-model="assignmentForm.userId" required>
                           <option value="" disabled>Escolha um usuário</option>
                           <option v-for="u in users" :key="u.id" :value="u.id">
@@ -1046,19 +1155,21 @@ onUnmounted(() => {
                 </div>
 
                 <!-- Active Associations -->
-                <h4 style="margin: 20px 0 10px 0; color:#003399;">Marcos Desbloqueados Ativamente:</h4>
+                <h4 style="margin: 20px 0 10px 0; color:#003399;">
+                  {{ assignmentForm.userId ? 'Marcos Desbloqueados de ' + (users.find(u => u.id === parseInt(assignmentForm.userId, 10))?.username || 'Usuário') + ':' : 'Marcos Desbloqueados Ativamente:' }}
+                </h4>
                 <div class="xp-table-container">
                   <table class="xp-table">
                     <thead>
                       <tr>
-                        <th>Nome do Motorista</th>
+                        <th>Nome do Usuário</th>
                         <th>Conquista Atribuída</th>
                         <th>Data de Concessão</th>
                         <th>Ações</th>
                       </tr>
                     </thead>
                     <tbody>
-                      <tr v-for="ua in userAchievements" :key="ua.userId + '-' + ua.achievementId">
+                      <tr v-for="ua in filteredUserAchievements" :key="ua.userId + '-' + ua.achievementId">
                         <td><strong>{{ ua.username }}</strong></td>
                         <td><span class="ach-badge-xp-pill">{{ ua.emoji }} {{ ua.title }}</span></td>
                         <td>{{ new Date(ua.unlockedAt).toLocaleString() }}</td>
@@ -1066,8 +1177,60 @@ onUnmounted(() => {
                           <button @click="revokeAchievement(ua.userId, ua.achievementId)" class="btn-xp red-btn" style="padding: 4px 8px; font-size:11px;">Revogar Conquista 🗑️</button>
                         </td>
                       </tr>
-                      <tr v-if="userAchievements.length === 0">
-                        <td colspan="4" class="empty-list-xp" style="text-align: center; padding: 20px;">Nenhuma conquista ativa no banco de dados.</td>
+                      <tr v-if="filteredUserAchievements.length === 0">
+                        <td colspan="4" class="empty-list-xp" style="text-align: center; padding: 20px;">{{ assignmentForm.userId ? 'Este usuário não possui conquistas desbloqueadas.' : 'Nenhuma conquista ativa no banco de dados.' }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- ===== TAB 5: BACKGROUNDS ===== -->
+              <div v-else-if="activeTab === 'backgrounds'" class="tab-pane">
+                <div class="pane-header-xp">
+                  <div>
+                    <h3>Tabela de Imagens de Fundo Padrão</h3>
+                    <p>Adicione ou remova opções de plano de fundo exibidas na tela dos usuários.</p>
+                  </div>
+                  <button @click="openBackgroundModal('create')" class="btn-xp green-btn">➕ Adicionar Novo Fundo</button>
+                </div>
+
+                <!-- Backgrounds Table -->
+                <div class="xp-table-container">
+                  <table class="xp-table">
+                    <thead>
+                      <tr>
+                        <th>Preview</th>
+                        <th>Chave (ID)</th>
+                        <th>Título</th>
+                        <th>URL da Imagem</th>
+                        <th>Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="bg in backgrounds" :key="bg.id">
+                        <td style="width: 100px; padding: 4px;">
+                          <div 
+                            v-if="bg.key !== 'stripes'" 
+                            :style="{ backgroundImage: `url(${bg.url})`, backgroundSize: 'cover', backgroundPosition: 'center' }"
+                            style="width: 80px; height: 50px; border: 1px solid #777; border-radius: 4px;"
+                          ></div>
+                          <div 
+                            v-else 
+                            style="width: 80px; height: 50px; border: 1px solid #777; border-radius: 4px; background: repeating-linear-gradient(-45deg, #f0f4f8, #f0f4f8 5px, #e2e8f0 5px, #e2e8f0 10px);"
+                          ></div>
+                        </td>
+                        <td><code>{{ bg.key }}</code></td>
+                        <td><strong>{{ bg.title }}</strong></td>
+                        <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                          <a :href="bg.url" target="_blank" style="color: #003399;">{{ bg.url }}</a>
+                        </td>
+                        <td>
+                          <button @click="deleteBackground(bg.id)" class="btn-xp red-btn" style="padding: 4px 8px; font-size:11px;">Excluir 🗑️</button>
+                        </td>
+                      </tr>
+                      <tr v-if="backgrounds.length === 0">
+                        <td colspan="5" class="empty-list-xp" style="text-align: center; padding: 20px;">Nenhuma imagem de fundo padrão no banco de dados.</td>
                       </tr>
                     </tbody>
                   </table>
@@ -1078,23 +1241,7 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- Exaggerated Windows XP Taskbar -->
-      <footer class="xp-taskbar">
-        <button class="start-button">
-          <span class="start-flag">🟢</span>
-          <span>Iniciar</span>
-        </button>
-        <div class="taskbar-running-apps">
-          <div class="taskbar-tab active">
-            📂 LeitadApp CMS
-          </div>
-        </div>
-        <div class="taskbar-tray">
-          <span class="tray-icon">🔊</span>
-          <span class="tray-icon">🛡️</span>
-          <span class="tray-clock">{{ new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) }}</span>
-        </div>
-      </footer>
+
     </div>
 
     <!-- Retro Windows XP Context Menu -->
@@ -1183,18 +1330,26 @@ onUnmounted(() => {
           </div>
           <div class="input-group">
             <label>Endereço de E-mail:</label>
-            <input v-model="userForm.email" type="email" placeholder="motorista@email.com" />
+            <input v-model="userForm.email" type="email" placeholder="usuario@email.com" />
           </div>
           <div class="input-group">
             <label>Cargo (Role):</label>
             <select v-model="userForm.role">
-              <option value="driver">Driver (Motorista)</option>
+              <option value="driver">Driver (Usuário)</option>
               <option value="admin">Administrador (Admin)</option>
             </select>
           </div>
           <div class="input-group">
             <label>Contador de Corridas:</label>
             <input v-model="userForm.tripsCount" type="number" min="0" required />
+          </div>
+          <div class="input-group">
+            <label>URL da Foto de Perfil (Avatar):</label>
+            <input v-model="userForm.avatarUrl" type="text" placeholder="https://exemplo.com/avatar.jpg" />
+          </div>
+          <div class="input-group">
+            <label>URL do Banner do Perfil:</label>
+            <input v-model="userForm.bannerUrl" type="text" placeholder="https://exemplo.com/banner.jpg" />
           </div>
           <div class="input-group">
             <label>{{ modalMode === 'create' ? 'Senha de Acesso:' : 'Senha (deixe em branco para não alterar):' }}</label>
@@ -1218,7 +1373,7 @@ onUnmounted(() => {
         </header>
         <form @submit.prevent="submitTrip" class="xp-form-modal">
           <div class="input-group" v-if="modalMode === 'create'">
-            <label>Selecione o Motorista:</label>
+            <label>Selecione o Usuário:</label>
             <select v-model="tripForm.userId" required>
               <option v-for="u in users" :key="u.id" :value="u.id">{{ u.username }}</option>
             </select>
@@ -1243,8 +1398,8 @@ onUnmounted(() => {
               <input v-model="tripForm.avgSpeed" type="number" step="0.1" />
             </div>
             <div class="input-group">
-              <label>Quantidade de Passageiros:</label>
-              <input v-model="tripForm.passengerCount" type="number" min="1" required />
+              <label>Data/Hora da Corrida:</label>
+              <input v-model="tripForm.createdAt" type="datetime-local" required />
             </div>
           </div>
           <div class="grid-2-col-xp">
@@ -1257,8 +1412,35 @@ onUnmounted(() => {
               <input v-model="tripForm.endLocation" type="text" placeholder="Av..." />
             </div>
           </div>
-          <div class="input-group">
-            <label>XP / Pontos Acumulados:</label>
+
+          <!-- Paradas Intermediárias -->
+          <div class="input-group" style="margin-top: 8px;">
+            <label style="font-weight: bold; display: block; margin-bottom: 4px;">Paradas Intermediárias (Waypoints):</label>
+            <div v-for="(wp, idx) in tripForm.waypoints" :key="idx" style="display: flex; gap: 6px; align-items: center; margin-bottom: 6px;">
+              <input v-model="tripForm.waypoints[idx]" type="text" placeholder="Endereço da parada" required style="flex: 1; padding: 4px 8px; border: 1px solid #7f9db9; font-size: 12px; height: 26px; box-sizing: border-box;" />
+              <button type="button" @click="removeFormWaypoint(idx)" style="background: #f0f0f0; border: 1px solid #7f9db9; padding: 2px 6px; color: #ef4444; cursor: pointer; font-weight: bold; font-size: 11px; height: 26px; box-sizing: border-box; display: flex; align-items: center; justify-content: center;">✕</button>
+            </div>
+            <button type="button" @click="addFormWaypoint" class="btn-xp secondary-btn" style="padding: 2px 8px; font-size: 11px; align-self: flex-start; cursor: pointer; background: #f0f0f0; border: 1px solid #7f9db9; margin-top: 2px; height: 24px;">
+              ➕ Adicionar Parada
+            </button>
+          </div>
+
+          <!-- Passageiros Participantes -->
+          <div class="input-group" style="margin-top: 8px;">
+            <label style="font-weight: bold; display: block; margin-bottom: 4px;">Passageiros da Corrida:</label>
+            <div style="max-height: 100px; overflow-y: auto; border: 1px solid #7f9db9; padding: 6px; background: white; box-sizing: border-box;">
+              <div v-for="u in users.filter(usr => usr.id !== parseInt(tripForm.userId, 10))" :key="u.id" style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                <input type="checkbox" :id="'pass-' + u.id" :value="u.id" v-model="tripForm.passengerIds" style="margin: 0; cursor: pointer;" />
+                <label :for="'pass-' + u.id" style="font-weight: normal; margin: 0; cursor: pointer; font-size: 12px; color: #333;">{{ u.username }}</label>
+              </div>
+              <div v-if="users.filter(usr => usr.id !== parseInt(tripForm.userId, 10)).length === 0" style="font-size: 11px; color: #666; font-style: italic; text-align: center; padding: 4px;">
+                Nenhum outro usuário disponível
+              </div>
+            </div>
+          </div>
+
+          <div class="input-group" style="margin-top: 8px;">
+            <label>XP / Pontos Gerados:</label>
             <input v-model="tripForm.pointsGenerated" type="number" required />
           </div>
           <footer class="xp-modal-footer">
@@ -1418,6 +1600,35 @@ onUnmounted(() => {
                 <option value="rose">Rosa Neon</option>
               </select>
             </div>
+          </div>
+          <footer class="xp-modal-footer">
+            <button type="button" @click="activeModal = null" class="btn-xp secondary-btn">Cancelar</button>
+            <button type="submit" class="btn-xp green-btn">Gravar Registro</button>
+          </footer>
+        </form>
+      </div>
+
+      <!-- BACKGROUND MODAL -->
+      <div v-if="activeModal === 'background'" class="xp-window animate-scale-up" style="max-width: 420px;">
+        <header class="xp-titlebar">
+          <div class="titlebar-logo">
+            <span class="logo-icon">🖼️</span>
+            <h2>Propriedades da Imagem de Fundo</h2>
+          </div>
+          <button @click="activeModal = null" class="win-btn close">X</button>
+        </header>
+        <form @submit.prevent="submitBackground" class="xp-form-modal">
+          <div class="input-group">
+            <label>Chave Única (key):</label>
+            <input v-model="backgroundForm.key" type="text" required placeholder="Ex: aurora" :disabled="modalMode === 'update'" />
+          </div>
+          <div class="input-group">
+            <label>Título Exibido:</label>
+            <input v-model="backgroundForm.title" type="text" required placeholder="Ex: Aurora Boreal" />
+          </div>
+          <div class="input-group">
+            <label>URL da Imagem:</label>
+            <input v-model="backgroundForm.url" type="text" required placeholder="https://..." />
           </div>
           <footer class="xp-modal-footer">
             <button type="button" @click="activeModal = null" class="btn-xp secondary-btn">Cancelar</button>
@@ -1709,7 +1920,6 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  padding: 0 0 36px 0; /* space for taskbar */
 }
 
 .main-window {

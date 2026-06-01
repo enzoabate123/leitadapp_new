@@ -41,12 +41,27 @@ async function main() {
   await prisma.settings.deleteMany();
   await prisma.user.deleteMany();
   await prisma.achievement.deleteMany();
+  await prisma.backgroundOption.deleteMany();
 
   // Cria achievements
   for (const ach of achievements) {
     await prisma.achievement.create({ data: ach });
   }
   console.log(`✅ ${achievements.length} achievements criados`);
+
+  // Cria imagens de fundo padrão
+  const defaultBackgrounds = [
+    { key: 'bliss', title: 'Windows XP Bliss (Colinas Verdes)', url: 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=1920&q=80' },
+    { key: 'aqua', title: 'Frutiger Aero Aqua (Gotas de Água)', url: 'https://images.unsplash.com/photo-1518837695005-2083093ee35b?auto=format&fit=crop&w=1920&q=80' },
+    { key: 'space', title: 'Deep Space (Espaço Sideral)', url: 'https://images.unsplash.com/photo-1506318137071-a8e063b4bec0?auto=format&fit=crop&w=1920&q=80' },
+    { key: 'sunset', title: 'Sunset Beach (Pôr do Sol)', url: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1920&q=80' },
+    { key: 'stripes', title: 'LeitadApp Stripes (Listras Clássicas)', url: 'stripes' },
+  ];
+
+  for (const bg of defaultBackgrounds) {
+    await prisma.backgroundOption.create({ data: bg });
+  }
+  console.log(`✅ ${defaultBackgrounds.length} imagens de fundo criadas`);
 
   // Cria usuário de teste
   const hashedPassword = hashPassword('astrea123');
@@ -82,6 +97,8 @@ async function main() {
       xpAlerts: true,
       socialRanking: false,
       publicProfile: true,
+      bgType: 'bliss',
+      customBgUrl: '',
     },
   });
   await prisma.settings.create({
@@ -91,6 +108,8 @@ async function main() {
       xpAlerts: false,
       socialRanking: false,
       publicProfile: false,
+      bgType: 'bliss',
+      customBgUrl: '',
     },
   });
   console.log('✅ Settings padrão criadas');

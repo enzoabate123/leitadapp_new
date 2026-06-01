@@ -26,6 +26,8 @@ model User {
   bannerUrl       String?
   customTags      String?
   highlightedAchievements String?
+  profileTextColor String? @default("#ffffff")
+  bannerPositionY  String? @default("50%")
 }
 
 model Score {
@@ -118,5 +120,14 @@ model Settings {
   xpAlerts          Boolean @default(true)
   socialRanking     Boolean @default(false)
   publicProfile     Boolean @default(true)
+  bgType            String  @default("bliss")
+  customBgUrl       String  @default("")
   user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model BackgroundOption {
+  id    Int    @id @default(autoincrement())
+  key   String @unique
+  title String
+  url   String
 }
