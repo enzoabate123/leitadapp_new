@@ -8,6 +8,7 @@ const activeTrack = ref(null);
 const isPlaying = ref(false);
 const audioRef = ref(null);
 const musicVolume = ref(parseFloat(localStorage.getItem('musicVolume') ?? '0.3'));
+const isExpanded = ref(false);
 
 const handleVolumeChange = (e) => {
   if (e.detail && e.detail.type === 'music') {
@@ -119,7 +120,7 @@ onUnmounted(() => {
   <router-view />
   
   <!-- Floating Glassmorphic Music Player Widget -->
-  <div v-if="activeTrack" class="music-widget">
+  <div v-if="activeTrack" class="music-widget" :class="{ expanded: isExpanded }" @click="isExpanded = !isExpanded">
     <audio ref="audioRef" loop></audio>
     <div class="widget-content">
       <div 
@@ -133,7 +134,7 @@ onUnmounted(() => {
         <div class="track-status">{{ isPlaying ? 'TOCANDO' : 'PAUSADO' }}</div>
         <div class="track-title" :title="activeTrack.title">{{ activeTrack.title }}</div>
       </div>
-      <button class="control-btn" @click="togglePlay" :title="isPlaying ? 'Pausar' : 'Tocar'">
+      <button class="control-btn" @click.stop="togglePlay" :title="isPlaying ? 'Pausar' : 'Tocar'">
         <svg v-if="isPlaying" viewBox="0 0 24 24" fill="currentColor">
           <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
         </svg>
@@ -164,6 +165,7 @@ onUnmounted(() => {
   padding: 10px;
   overflow: hidden;
   user-select: none;
+  cursor: pointer;
   animation: slide-in 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1),
               padding 0.4s cubic-bezier(0.16, 1, 0.3, 1),
@@ -173,12 +175,15 @@ onUnmounted(() => {
 }
 
 .music-widget:hover {
-  width: 280px;
-  padding: 10px 14px;
   background: rgba(255, 255, 255, 0.35);
   transform: translateY(-2px);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2), 
               inset 0 1px 1px rgba(255, 255, 255, 0.6);
+}
+
+.music-widget.expanded {
+  width: 280px;
+  padding: 10px 14px;
 }
 
 .widget-content {
@@ -224,10 +229,12 @@ onUnmounted(() => {
   flex-direction: column;
   opacity: 0;
   transition: opacity 0.3s ease;
+  pointer-events: none;
 }
 
-.music-widget:hover .track-info {
+.music-widget.expanded .track-info {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .track-status {
@@ -262,10 +269,12 @@ onUnmounted(() => {
   transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease, opacity 0.3s ease;
   flex-shrink: 0;
   opacity: 0;
+  pointer-events: none;
 }
 
-.music-widget:hover .control-btn {
+.music-widget.expanded .control-btn {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .control-btn:hover {
