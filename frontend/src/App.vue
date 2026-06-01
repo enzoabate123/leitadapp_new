@@ -10,12 +10,21 @@ const audioRef = ref(null);
 const musicVolume = ref(parseFloat(localStorage.getItem('musicVolume') ?? '0.3'));
 const isExpanded = ref(false);
 
+const applyMusicVolume = () => {
+  if (!audioRef.value) return;
+  if (musicVolume.value < 0.01) {
+    audioRef.value.volume = 0;
+    audioRef.value.muted = true;
+  } else {
+    audioRef.value.muted = false;
+    audioRef.value.volume = musicVolume.value * 0.5; // Scale max volume to 50%
+  }
+};
+
 const handleVolumeChange = (e) => {
   if (e.detail && e.detail.type === 'music') {
     musicVolume.value = e.detail.value;
-    if (audioRef.value) {
-      audioRef.value.volume = musicVolume.value;
-    }
+    applyMusicVolume();
   }
 };
 
@@ -39,7 +48,7 @@ const fetchActiveTrack = async () => {
         nextTick(() => {
           if (audioRef.value) {
             audioRef.value.src = `${API_URL}${track.audioUrl}`;
-            audioRef.value.volume = musicVolume.value;
+            applyMusicVolume();
             audioRef.value.load();
             if (wasPlaying) {
               isPlaying.value = true;
