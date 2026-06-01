@@ -7,6 +7,16 @@ const API_URL = import.meta.env.DEV ? 'http://localhost:3001' : window.location.
 const activeTrack = ref(null);
 const isPlaying = ref(false);
 const audioRef = ref(null);
+const musicVolume = ref(parseFloat(localStorage.getItem('musicVolume') ?? '0.3'));
+
+const handleVolumeChange = (e) => {
+  if (e.detail && e.detail.type === 'music') {
+    musicVolume.value = e.detail.value;
+    if (audioRef.value) {
+      audioRef.value.volume = musicVolume.value;
+    }
+  }
+};
 
 const fetchActiveTrack = async () => {
   try {
@@ -28,6 +38,7 @@ const fetchActiveTrack = async () => {
         nextTick(() => {
           if (audioRef.value) {
             audioRef.value.src = `${API_URL}${track.audioUrl}`;
+            audioRef.value.volume = musicVolume.value;
             audioRef.value.load();
             if (wasPlaying) {
               isPlaying.value = true;
@@ -93,12 +104,14 @@ onMounted(async () => {
   // Event listener to unlock audio autoplay on modern browsers
   document.body.addEventListener('click', handleUserInteraction);
   document.body.addEventListener('touchstart', handleUserInteraction);
+  window.addEventListener('volume-change', handleVolumeChange);
 });
 
 onUnmounted(() => {
   if (pollInterval) clearInterval(pollInterval);
   document.body.removeEventListener('click', handleUserInteraction);
   document.body.removeEventListener('touchstart', handleUserInteraction);
+  window.removeEventListener('volume-change', handleVolumeChange);
 });
 </script>
 

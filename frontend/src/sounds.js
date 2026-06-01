@@ -3,6 +3,16 @@
 // Inspired by Wii, Switch, and GameCube menu aesthetics.
 
 let audioCtx = null;
+let sfxVolumeMultiplier = parseFloat(localStorage.getItem('sfxVolumeMultiplier') ?? '0.5');
+
+export function setSfxVolume(vol) {
+  sfxVolumeMultiplier = parseFloat(vol);
+  localStorage.setItem('sfxVolumeMultiplier', sfxVolumeMultiplier.toString());
+}
+
+export function getSfxVolume() {
+  return sfxVolumeMultiplier;
+}
 
 function getCtx() {
   if (!audioCtx) {
@@ -23,9 +33,11 @@ function playTone({ freq = 440, type = 'sine', duration = 0.08, volume = 0.15, d
   osc.frequency.setValueAtTime(freq, t);
   if (detune) osc.detune.setValueAtTime(detune, t);
 
+  const finalVolume = volume * sfxVolumeMultiplier;
+
   gain.gain.setValueAtTime(0, t);
-  gain.gain.linearRampToValueAtTime(volume, t + 0.005);
-  gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
+  gain.gain.linearRampToValueAtTime(finalVolume, t + 0.005);
+  gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, 0.001 * sfxVolumeMultiplier), t + duration);
 
   osc.connect(gain);
   gain.connect(ctx.destination);
@@ -110,3 +122,12 @@ export function attachHoverSounds(rootEl) {
     }
   }, true);
 }
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('volume-change', (e) => {
+    if (e.detail && e.detail.type === 'sfx') {
+      setSfxVolume(e.detail.value);
+    }
+  });
+}
+

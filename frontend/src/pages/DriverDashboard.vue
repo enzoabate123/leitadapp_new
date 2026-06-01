@@ -777,6 +777,19 @@ const xpAlerts = ref(true);
 const socialRanking = ref(false);
 const publicProfile = ref(true);
 
+const sfxVolume = ref(parseFloat(localStorage.getItem('sfxVolumeMultiplier') ?? '0.5'));
+const musicVolume = ref(parseFloat(localStorage.getItem('musicVolume') ?? '0.3'));
+
+function updateVolume(type) {
+  if (type === 'sfx') {
+    localStorage.setItem('sfxVolumeMultiplier', sfxVolume.value.toString());
+    window.dispatchEvent(new CustomEvent('volume-change', { detail: { type: 'sfx', value: sfxVolume.value } }));
+  } else if (type === 'music') {
+    localStorage.setItem('musicVolume', musicVolume.value.toString());
+    window.dispatchEvent(new CustomEvent('volume-change', { detail: { type: 'music', value: musicVolume.value } }));
+  }
+}
+
 // Configurações de Fundo
 const appBgType = ref(localStorage.getItem('app-background') || 'bliss');
 const appCustomBgUrl = ref(localStorage.getItem('app-background-custom') || '');
@@ -2266,6 +2279,66 @@ modalsToWatch.forEach(m => {
                   >
                     <div class="toggle-knob"></div>
                   </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Áudio e Volumes -->
+            <div>
+              <p class="profile-section-title" style="padding-left:4px">Áudio e Volumes</p>
+              <div class="flex flex-col gap-2">
+                <!-- SFX Volume Row -->
+                <div class="settings-row" style="flex-direction: column; align-items: stretch; padding: 16px; gap: 8px;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                    <div class="settings-item-left">
+                      <div class="settings-icon-box bg-blue-100" style="background-color: #e0f2fe; color: #0284c7; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 16px; height: 16px;">
+                          <path d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
+                        </svg>
+                      </div>
+                      <div>
+                        <p class="settings-label">Efeitos Sonoros (SFX)</p>
+                        <p class="settings-desc">Volume dos cliques e alertas</p>
+                      </div>
+                    </div>
+                    <span style="font-size: 12px; font-weight: bold; color: #475569;">{{ Math.round(sfxVolume * 100) }}%</span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="1" 
+                    step="0.05" 
+                    v-model.number="sfxVolume" 
+                    @input="updateVolume('sfx')"
+                    style="width: 100%; cursor: pointer;"
+                  />
+                </div>
+
+                <!-- Music Volume Row -->
+                <div class="settings-row" style="flex-direction: column; align-items: stretch; padding: 16px; gap: 8px;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                    <div class="settings-item-left">
+                      <div class="settings-icon-box bg-purple-100" style="background-color: #f3e8ff; color: #7c3aed; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 16px; height: 16px;">
+                          <path d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
+                        </svg>
+                      </div>
+                      <div>
+                        <p class="settings-label">Música de Fundo</p>
+                        <p class="settings-desc">Volume do tocador de música</p>
+                      </div>
+                    </div>
+                    <span style="font-size: 12px; font-weight: bold; color: #475569;">{{ Math.round(musicVolume * 100) }}%</span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="1" 
+                    step="0.05" 
+                    v-model.number="musicVolume" 
+                    @input="updateVolume('music')"
+                    style="width: 100%; cursor: pointer;"
+                  />
                 </div>
               </div>
             </div>
