@@ -131,3 +131,13 @@ model BackgroundOption {
   title String
   url   String
 }
+
+model MusicTrack {
+  id        Int      @id @default(autoincrement())
+  title     String
+  coverUrl  String?
+  audioUrl  String
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+

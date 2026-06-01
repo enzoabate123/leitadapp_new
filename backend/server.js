@@ -63,7 +63,11 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-await fastify.register(fastifyMultipart);
+await fastify.register(fastifyMultipart, {
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB limit for audio files
+  }
+});
 await fastify.register(fastifyStatic, {
   root: uploadsDir,
   prefix: '/uploads/',
@@ -1226,6 +1230,77 @@ fastify.delete('/api/admin/backgrounds/:id', { preHandler: authenticateAdmin }, 
     return { success: true };
   } catch (err) {
     return reply.status(400).send({ error: 'Erro ao deletar imagem de fundo: ' + err.message });
+  }
+});
+
+// ─── Music Routes ────────────────────────────────────────
+
+// GET /api/music/active
+fastify.get('/api/music/active', async (request, reply) => {
+  const activeMusic = await prisma.musicTrack.findFirst({
+    where: { isActive: true }
+  });
+  return activeMusic || null;
+});
+
+// GET /api/admin/music
+fastify.get('/api/admin/music', { preHandler: authenticateAdmin }, async () => {
+  return prisma.musicTrack.findMany({
+    orderBy: { createdAt: 'desc' }
+  });
+});
+
+// POST /api/admin/music
+fastify.post('/api/admin/music', { preHandler: authenticateAdmin }, async (request, reply) => {
+  const { title, audioUrl, coverUrl } = request.body || {};
+  if (!title || !audioUrl) {
+    return reply.status(400).send({ error: 'Título e arquivo de áudio são obrigatórios' });
+  }
+
+  const track = await prisma.musicTrack.create({
+    data: {
+      title,
+      audioUrl,
+      coverUrl,
+      isActive: false
+    }
+  });
+  return track;
+});
+
+// PUT /api/admin/music/:id/activate
+fastify.put('/api/admin/music/:id/activate', { preHandler: authenticateAdmin }, async (request, reply) => {
+  const id = parseInt(request.params.id, 10);
+  if (isNaN(id)) {
+    return reply.status(400).send({ error: 'ID inválido' });
+  }
+
+  await prisma.musicTrack.updateMany({
+    data: { isActive: false }
+  });
+
+  const updatedTrack = await prisma.musicTrack.update({
+    where: { id },
+    data: { isActive: true }
+  });
+
+  return updatedTrack;
+});
+
+// DELETE /api/admin/music/:id
+fastify.delete('/api/admin/music/:id', { preHandler: authenticateAdmin }, async (request, reply) => {
+  const id = parseInt(request.params.id, 10);
+  if (isNaN(id)) {
+    return reply.status(400).send({ error: 'ID inválido' });
+  }
+
+  try {
+    await prisma.musicTrack.delete({
+      where: { id }
+    });
+    return { success: true };
+  } catch (err) {
+    return reply.status(400).send({ error: 'Erro ao deletar música: ' + err.message });
   }
 });
 
