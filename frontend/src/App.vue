@@ -149,11 +149,11 @@ onUnmounted(() => {
 <style scoped>
 .music-widget {
   position: fixed;
-  bottom: 24px;
-  left: 24px;
+  bottom: 20px;
+  left: 20px;
   z-index: 999999;
-  width: 62px;
-  height: 62px;
+  width: 64px;
+  height: 64px;
   box-sizing: border-box;
   background: rgba(255, 255, 255, 0.25);
   backdrop-filter: blur(12px);
@@ -162,7 +162,7 @@ onUnmounted(() => {
   border-radius: 20px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15), 
               inset 0 1px 1px rgba(255, 255, 255, 0.5);
-  padding: 10px;
+  padding: 11px;
   overflow: hidden;
   user-select: none;
   cursor: pointer;
@@ -183,7 +183,7 @@ onUnmounted(() => {
 
 .music-widget.expanded {
   width: 280px;
-  padding: 10px 14px;
+  padding: 11px 14px;
 }
 
 .widget-content {
