@@ -16,11 +16,11 @@ const router = useRouter();
 
 // Auth and API variables
 const API_URL = (() => {
-  const { hostname, protocol, host } = window.location;
+  const { hostname, protocol } = window.location;
   if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.')) {
     return `${protocol}//${hostname}:3003`;
   }
-  return `${protocol}//api.${host}`;
+  return `${protocol}//api-${hostname}`;
 })();
 const token = ref(localStorage.getItem('token') || '');
 const isAuthenticated = ref(false);
