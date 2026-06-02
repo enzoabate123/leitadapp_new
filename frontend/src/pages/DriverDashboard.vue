@@ -1333,6 +1333,8 @@ const profileHighlightedAchievementsData = computed(() => {
   return highlightedAchievementsData.value;
 });
 
+const profileBio = computed(() => viewedProfileUser.value ? viewedProfileUser.value.bio : bio.value);
+
 const publicHighlightedAchievementsData = computed(() => {
   if (!publicProfileData.value || !publicProfileData.value.highlightedAchievements) return [];
   const highlights = publicProfileData.value.highlightedAchievements;
@@ -1755,6 +1757,7 @@ modalsToWatch.forEach(m => {
           :highlightedAchievementsData="profileHighlightedAchievementsData"
           :getFullUrl="getFullUrl"
           :isOwnProfile="viewedProfileUser === null"
+          :bio="profileBio"
           @trigger-avatar-upload="triggerAvatarUpload"
           @trigger-banner-upload="triggerBannerUpload"
           @start-banner-drag="startBannerDrag"
@@ -1768,6 +1771,7 @@ modalsToWatch.forEach(m => {
           @toggle-editing-profile="toggleEditingProfile"
           @update-text-color="updateTextColor"
           @go-back-to-own-profile="viewedProfileUser = null"
+          @edit-bio="promptEditBio"
         />
       </div>
 
@@ -2168,71 +2172,6 @@ modalsToWatch.forEach(m => {
             </div>
           </div>
 
-          <!-- Stats Grid -->
-          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
-            <!-- Km -->
-            <div class="metric-card">
-              <div class="metric-card-icon bg-blue-100" style="color: #2563eb;">
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
-                </svg>
-              </div>
-              <p class="metric-card-val">{{ (publicProfileData.totalDistanceKm || 0).toLocaleString('pt-BR') }}<span class="metric-card-val-unit">km</span></p>
-              <span style="font-size: 8px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-top: 2px;">Distância</span>
-            </div>
-            <!-- Hours -->
-            <div class="metric-card">
-              <div class="metric-card-icon bg-emerald-100" style="color: #059669;">
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
-                </svg>
-              </div>
-              <p class="metric-card-val">{{ (publicProfileData.totalHours || 0).toLocaleString('pt-BR') }}<span class="metric-card-val-unit">h</span></p>
-              <span style="font-size: 8px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-top: 2px;">Tempo</span>
-            </div>
-            <!-- Points -->
-            <div class="metric-card">
-              <div class="metric-card-icon bg-orange-100" style="color: #ea580c;">
-                <svg fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
-                </svg>
-              </div>
-              <p class="metric-card-val">{{ (publicProfileData.totalPoints || 0).toLocaleString('pt-BR') }}</p>
-              <span style="font-size: 8px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-top: 2px;">Pontos</span>
-            </div>
-            <!-- Trips Count -->
-            <div class="metric-card">
-              <div class="metric-card-icon bg-purple-100" style="color: #7c3aed;">
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
-                  <path d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10M21 16V10a2 2 0 00-2-2h-7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
-                </svg>
-              </div>
-              <p class="metric-card-val">{{ publicProfileData.tripsCount || 0 }}</p>
-              <span style="font-size: 8px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-top: 2px;">Viagens</span>
-            </div>
-            <!-- Total Passengers -->
-            <div class="metric-card">
-              <div class="metric-card-icon bg-indigo-100" style="color: #4f46e5;">
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
-                </svg>
-              </div>
-              <p class="metric-card-val">{{ (publicProfileData.totalPassengers || 0).toLocaleString('pt-BR') }}</p>
-              <span style="font-size: 8px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-top: 2px;">Caronas</span>
-            </div>
-            <!-- Longest Trip -->
-            <div class="metric-card">
-              <div class="metric-card-icon bg-red-100" style="color: #dc2626;">
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path d="M13 10V3L4 14h7v7l9-11h-7z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
-                </svg>
-              </div>
-              <p class="metric-card-val">{{ (publicProfileData.longestTripKm || 0).toLocaleString('pt-BR') }}<span class="metric-card-val-unit">km</span></p>
-              <span style="font-size: 8px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-top: 2px;">Maior Viagem</span>
-            </div>
-          </div>
-
           <!-- Conquistas em Destaque (Perfil Público) -->
           <div style="display: flex; flex-direction: column; gap: 8px;">
             <h2 class="profile-section-title">Conquistas em Destaque</h2>
@@ -2256,21 +2195,6 @@ modalsToWatch.forEach(m => {
                 <span style="font-size: 20px; color: #cbd5e1;">🏆</span>
                 <p style="font-style: italic; font-size: 11px; color: #94a3b8; margin: 0;">Nenhuma conquista em destaque.</p>
               </div>
-            </div>
-          </div>
-
-          <!-- Mini-mapa da Viagem Mais Longa (Perfil Público) -->
-          <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 8px;">
-            <h3 style="font-size: 11px; font-weight: 800; color: #64748b; margin: 0; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px;">
-              🗺️ Rota da Maior Viagem
-            </h3>
-            <div v-if="publicProfileData.longestTrip" style="position: relative; border-radius: 20px; overflow: hidden; border: 1px solid rgba(0,0,0,0.08); box-shadow: 0 4px 20px rgba(0,0,0,0.06); background: #f8fafc; display: flex; flex-direction: column;">
-              <!-- Map container (Non-interactive) -->
-              <div ref="publicProfileMapContainer" style="height: 180px; width: 100%; z-index: 1; pointer-events: none;"></div>
-            </div>
-            <div v-else style="padding: 20px; text-align: center; border-radius: 20px; border: 1.5px dashed rgba(0,0,0,0.08); background: rgba(0,0,0,0.02); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;">
-              <span style="font-size: 24px;">📭</span>
-              <p style="font-size: 11px; color: #94a3b8; font-weight: 600; margin: 0;">Nenhuma corrida registrada para este motorista.</p>
             </div>
           </div>
 

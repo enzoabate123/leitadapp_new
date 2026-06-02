@@ -25,7 +25,8 @@ const props = defineProps({
   isOwnProfile: {
     type: Boolean,
     default: true
-  }
+  },
+  bio: String
 });
 
 const emit = defineEmits([
@@ -41,7 +42,8 @@ const emit = defineEmits([
   'reset-trophy-hover',
   'toggle-editing-profile',
   'update-text-color',
-  'go-back-to-own-profile'
+  'go-back-to-own-profile',
+  'edit-bio'
 ]);
 
 const profileMapContainer = ref(null);
@@ -278,6 +280,23 @@ onUnmounted(() => {
           <div v-else style="aspect-ratio: 1.8 / 1; min-height: 170px; text-align: center; border-radius: 20px; border: 1.5px dashed rgba(0,0,0,0.08); background: rgba(0,0,0,0.02); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 12px;">
             <span style="font-size: 20px;">📭</span>
             <p style="font-size: 10px; color: #94a3b8; font-weight: 600; margin: 0; line-height: 1.2;">Nenhuma corrida registrada.</p>
+          </div>
+
+          <!-- Biografia -->
+          <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <h3 style="font-size: 11px; font-weight: 800; color: #64748b; margin: 0; text-transform: uppercase; letter-spacing: 0.05em;">
+                📖 Biografia
+              </h3>
+              <button v-if="isOwnProfile" style="font-size: 10px; color: #9333ea; border: none; background: none; cursor: pointer; font-weight: 700; padding: 0;" @click="$emit('edit-bio')">
+                ✏️ Editar
+              </button>
+            </div>
+            <div class="bio-box" style="padding: 12px; background: rgba(255, 255, 255, 0.45); border: 1px solid rgba(0,0,0,0.05); border-radius: 20px;">
+              <p class="bio-text" style="color: #475569; font-style: italic; font-size: 12px; margin: 0; line-height: 1.4;">
+                "{{ bio || 'Sem biografia disponível.' }}"
+              </p>
+            </div>
           </div>
         </div>
 
