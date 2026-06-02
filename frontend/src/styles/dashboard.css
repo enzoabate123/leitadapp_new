@@ -674,20 +674,14 @@
     border-radius: 8px !important;
   }
 
+  /* Ocultar overlay redundante de rota no mobile para liberar espaço */
   .map-route-overlay {
-    top: 8px !important;
-    padding: 6px 12px !important;
-    font-size: 9px !important;
-    max-width: 80% !important;
-  }
-
-  .route-path {
-    font-size: 9px !important;
+    display: none !important;
   }
 
   .map-floating-music {
-    top: auto !important;
-    bottom: 8px !important;
+    top: 8px !important;
+    bottom: auto !important;
     right: 8px !important;
     width: 160px !important;
     padding: 6px 10px !important;
@@ -712,10 +706,12 @@
     font-size: 8px !important;
   }
 
+  /* Botão de iniciar/parar corrida centralizado na base do mapa */
   .map-floating-bottom {
-    bottom: auto !important;
-    top: 50% !important;
-    transform: translate(-50%, -50%) !important;
+    top: auto !important;
+    bottom: 8px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
   }
 
   .premium-floating-btn {
@@ -724,6 +720,7 @@
   }
 
   .map-floating-qr-widget {
+    top: auto !important;
     bottom: 8px !important;
     right: auto !important;
     left: 8px !important;

@@ -746,8 +746,9 @@ button:hover .cog-icon {
   /* Recalcular o contêiner geral do iPad */
   .ipad {
     width: calc(100vw - 16px) !important;
-    height: calc(100vh - 16px) !important;
-    margin: 8px !important;
+    height: calc(100vh - 16px - env(safe-area-inset-bottom)) !important;
+    height: calc(100dvh - 16px - env(safe-area-inset-bottom)) !important;
+    margin: 8px 8px calc(8px + env(safe-area-inset-bottom)) 8px !important;
     flex-direction: column-reverse !important; /* Barra de navegação na base no celular */
     gap: 8px !important;
   }
