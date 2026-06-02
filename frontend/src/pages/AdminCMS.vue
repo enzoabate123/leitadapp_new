@@ -15,7 +15,7 @@ import MusicTab from '../components/admin/MusicTab.vue';
 const router = useRouter();
 
 // Auth and API variables
-const API_URL = import.meta.env.DEV ? 'http://localhost:3001' : window.location.origin;
+const API_URL = import.meta.env.DEV ? 'http://localhost:3003' : `${window.location.protocol}//api.${window.location.host}`;
 const token = ref(localStorage.getItem('token') || '');
 const isAuthenticated = ref(false);
 const isAdmin = ref(false);

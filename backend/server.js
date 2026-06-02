@@ -1387,8 +1387,8 @@ process.on('SIGTERM', shutdown);
 
 // ─── Start ───────────────────────────────────────────────
 try {
-  await fastify.listen({ port: 3001, host: '0.0.0.0' });
-  console.log('🚀 Backend rodando em http://0.0.0.0:3001');
+  await fastify.listen({ port: 3003, host: '0.0.0.0' });
+  console.log('🚀 Backend rodando em http://0.0.0.0:3003');
 } catch (err) {
   console.error('Falha ao iniciar:', err);
   process.exit(1);

@@ -13,7 +13,7 @@ import RankingTab from '../components/dashboard/RankingTab.vue';
 import SettingsTab from '../components/dashboard/SettingsTab.vue';
 
 // Autenticação e API
-const API_URL = import.meta.env.DEV ? 'http://localhost:3001' : window.location.origin;
+const API_URL = import.meta.env.DEV ? 'http://localhost:3003' : `${window.location.protocol}//api.${window.location.host}`;
 
 function getFullUrl(url) {
   if (!url) return '';

@@ -2,7 +2,7 @@
 import { onMounted, onUnmounted, ref, nextTick } from 'vue';
 import { sfxHover, sfxClick } from './sounds';
 
-const API_URL = import.meta.env.DEV ? 'http://localhost:3001' : window.location.origin;
+const API_URL = import.meta.env.DEV ? 'http://localhost:3003' : `${window.location.protocol}//api.${window.location.host}`;
 
 const activeTrack = ref(null);
 const isPlaying = ref(false);
