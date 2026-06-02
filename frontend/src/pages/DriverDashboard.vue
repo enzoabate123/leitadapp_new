@@ -292,6 +292,13 @@ async function openPublicProfile(uid) {
     if (publicProfileData.value.customTags) {
       publicProfileData.value.customTags = typeof data.customTags === 'string' ? JSON.parse(data.customTags) : data.customTags;
     }
+    if (publicProfileData.value.highlightedAchievements) {
+      publicProfileData.value.highlightedAchievements = typeof data.highlightedAchievements === 'string'
+        ? JSON.parse(data.highlightedAchievements || '[]')
+        : (data.highlightedAchievements || []);
+    } else {
+      publicProfileData.value.highlightedAchievements = [];
+    }
   } catch (err) {
     showToast('Erro ao carregar perfil');
     showPublicProfile.value = false;
@@ -324,7 +331,13 @@ async function renderPublicProfileMap(longestTrip) {
 
   publicProfileMap = L.map(publicProfileMapContainer.value, {
     zoomControl: false,
-    attributionControl: false
+    attributionControl: false,
+    dragging: false,
+    scrollWheelZoom: false,
+    doubleClickZoom: false,
+    boxZoom: false,
+    touchZoom: false,
+    keyboard: false
   }).setView([-23.55052, -46.633308], 12);
 
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
@@ -1295,6 +1308,73 @@ const highlightedAchievementsData = computed(() => {
   return highlightedAchievements.value.map(id => achievementsList.value.find(a => a.id === id)).filter(Boolean);
 });
 
+const viewedProfileUser = ref(null);
+
+const profileUsername = computed(() => viewedProfileUser.value ? viewedProfileUser.value.username : username.value);
+const profileUserTag = computed(() => viewedProfileUser.value ? String(viewedProfileUser.value.id).slice(-4) : userTag.value);
+const profileUserId = computed(() => viewedProfileUser.value ? String(viewedProfileUser.value.id) : userId.value);
+const profileAvatarUrl = computed(() => viewedProfileUser.value ? viewedProfileUser.value.avatarUrl : avatarUrl.value);
+const profileBannerUrl = computed(() => viewedProfileUser.value ? viewedProfileUser.value.bannerUrl : bannerUrl.value);
+const profileBannerPositionY = computed(() => viewedProfileUser.value ? viewedProfileUser.value.bannerPositionY : bannerPositionY.value);
+const profileTextColorVal = computed(() => viewedProfileUser.value ? viewedProfileUser.value.profileTextColor : profileTextColor.value);
+const profileCustomTags = computed(() => viewedProfileUser.value ? viewedProfileUser.value.customTags : customTags.value);
+const profileTotalKm = computed(() => viewedProfileUser.value ? viewedProfileUser.value.totalDistanceKm : totalKm.value);
+const profileTotalHours = computed(() => viewedProfileUser.value ? viewedProfileUser.value.totalHours : totalHours.value);
+const profileDisplayedPoints = computed(() => viewedProfileUser.value ? viewedProfileUser.value.totalPoints : displayedPoints.value);
+const profileTripsCount = computed(() => viewedProfileUser.value ? viewedProfileUser.value.tripsCount : tripsCount.value);
+const profileTotalPassengers = computed(() => viewedProfileUser.value ? viewedProfileUser.value.totalPassengers : totalPassengers.value);
+const profileLongestTripKm = computed(() => viewedProfileUser.value ? viewedProfileUser.value.longestTripKm : longestTripKm.value);
+const profileLongestTrip = computed(() => viewedProfileUser.value ? viewedProfileUser.value.longestTrip : longestTrip.value);
+const profileHighlightedAchievementsData = computed(() => {
+  if (viewedProfileUser.value) {
+    const highlights = viewedProfileUser.value.highlightedAchievements || [];
+    return highlights.map(id => achievementsList.value.find(a => a.id === id)).filter(Boolean);
+  }
+  return highlightedAchievementsData.value;
+});
+
+const publicHighlightedAchievementsData = computed(() => {
+  if (!publicProfileData.value || !publicProfileData.value.highlightedAchievements) return [];
+  const highlights = publicProfileData.value.highlightedAchievements;
+  return highlights.map(id => achievementsList.value.find(a => a.id === id)).filter(Boolean);
+});
+
+function getPublicBadgeStyle(ach, profileId) {
+  const isWinner = ach.firstWinner && String(ach.firstWinner.id) === String(profileId);
+  if (isWinner) {
+    return {
+      border: '1.5px solid #fbbf24',
+      background: 'linear-gradient(to bottom, #fffbeb, #fef3c7)',
+      boxShadow: '0 4px 12px rgba(251, 191, 36, 0.15)',
+      cursor: 'pointer',
+      width: '100%',
+      height: '76px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: '12px'
+    };
+  } else {
+    return {
+      cursor: 'pointer',
+      width: '100%',
+      height: '76px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: '12px',
+      border: '1px solid rgba(0,0,0,0.05)',
+      background: 'rgba(255,255,255,0.7)'
+    };
+  }
+}
+
+function viewFullProfile(profileUser) {
+  viewedProfileUser.value = profileUser;
+  activePage.value = 'profile';
+  closePublicProfile();
+}
+
 const showTagModal = ref(false);
 const editingTagIdx = ref(null);
 const tagModalForm = ref({ text: '', color: '#3b82f6' });
@@ -1477,6 +1557,9 @@ async function stopBannerDrag() {
 function navigate(page) {
   sfxNavigate();
   activePage.value = page;
+  if (page === 'profile') {
+    viewedProfileUser.value = null;
+  }
 }
 
 function handleLogout() {
@@ -1653,24 +1736,25 @@ modalsToWatch.forEach(m => {
       <!-- Profile Page -->
       <div :class="['page', activePage === 'profile' ? 'active' : '']" id="page-profile" style="position: relative; height: 100%;">
         <ProfileTab
-          :username="username"
-          :userTag="userTag"
-          :userId="userId"
-          :avatarUrl="avatarUrl"
-          :bannerUrl="bannerUrl"
-          :bannerPositionY="bannerPositionY"
-          :profileTextColor="profileTextColor"
-          :customTags="customTags"
+          :username="profileUsername"
+          :userTag="profileUserTag"
+          :userId="profileUserId"
+          :avatarUrl="profileAvatarUrl"
+          :bannerUrl="profileBannerUrl"
+          :bannerPositionY="profileBannerPositionY"
+          :profileTextColor="profileTextColorVal"
+          :customTags="profileCustomTags"
           :isEditingProfile="isEditingProfile"
-          :totalKm="totalKm"
-          :totalHours="totalHours"
-          :displayedPoints="displayedPoints"
-          :tripsCount="tripsCount"
-          :totalPassengers="totalPassengers"
-          :longestTripKm="longestTripKm"
-          :longestTrip="longestTrip"
-          :highlightedAchievementsData="highlightedAchievementsData"
+          :totalKm="profileTotalKm"
+          :totalHours="profileTotalHours"
+          :displayedPoints="profileDisplayedPoints"
+          :tripsCount="profileTripsCount"
+          :totalPassengers="profileTotalPassengers"
+          :longestTripKm="profileLongestTripKm"
+          :longestTrip="profileLongestTrip"
+          :highlightedAchievementsData="profileHighlightedAchievementsData"
           :getFullUrl="getFullUrl"
+          :isOwnProfile="viewedProfileUser === null"
           @trigger-avatar-upload="triggerAvatarUpload"
           @trigger-banner-upload="triggerBannerUpload"
           @start-banner-drag="startBannerDrag"
@@ -1683,6 +1767,7 @@ modalsToWatch.forEach(m => {
           @reset-trophy-hover="resetTrophyHover"
           @toggle-editing-profile="toggleEditingProfile"
           @update-text-color="updateTextColor"
+          @go-back-to-own-profile="viewedProfileUser = null"
         />
       </div>
 
@@ -2032,6 +2117,11 @@ modalsToWatch.forEach(m => {
       <!-- Close button -->
       <button @click="closePublicProfile" style="position: absolute; top: 16px; right: 16px; width: 32px; height: 32px; border-radius: 16px; background: rgba(0,0,0,0.1); border: none; font-size: 14px; cursor: pointer; z-index: 10; display: flex; align-items: center; justify-content: center; font-weight: bold;">✕</button>
 
+      <!-- View Full Profile button -->
+      <button @click="viewFullProfile(publicProfileData)" style="position: absolute; top: 16px; left: 16px; width: 32px; height: 32px; border-radius: 16px; background: rgba(255,255,255,0.85); border: 1px solid rgba(0,0,0,0.15); font-size: 14px; cursor: pointer; z-index: 10; display: flex; align-items: center; justify-content: center; font-weight: bold; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" title="Ver perfil completo">
+        🔎
+      </button>
+
       <div 
         v-if="publicProfileData.bannerUrl" 
         style="position: absolute; top: 0; left: 0; right: 0; height: 180px; background-size: cover; border-radius: 36px 36px 0 0; z-index: 0;"
@@ -2143,29 +2233,40 @@ modalsToWatch.forEach(m => {
             </div>
           </div>
 
+          <!-- Conquistas em Destaque (Perfil Público) -->
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <h2 class="profile-section-title">Conquistas em Destaque</h2>
+            <div style="padding: 10px; background: rgba(255,255,255,0.4); border: 1px solid rgba(0,0,0,0.05); border-radius: 20px; display: flex; align-items: center; justify-content: center; min-height: 96px; box-sizing: border-box; width: 100%;">
+              <div class="badge-list" v-if="publicHighlightedAchievementsData.length > 0" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; width: 100%;">
+                <div 
+                  class="badge-item" 
+                  v-for="ach in publicHighlightedAchievementsData" 
+                  :key="ach.id"
+                  @mousemove="handleTrophyHover"
+                  @mouseleave="resetTrophyHover"
+                  :style="getPublicBadgeStyle(ach, publicProfileData.id)"
+                >
+                  <div :style="{ color: ach.glowColor || '#eab308' }" style="font-size: 1.8rem; position: relative; pointer-events: none; display: flex; align-items: center; justify-content: center;">
+                    <span v-if="ach.firstWinner && String(ach.firstWinner.id) === String(publicProfileData.id)" style="position: absolute; top: -6px; right: -6px; font-size: 9px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2)); z-index: 2;">👑</span>
+                    {{ ach.emoji || '🏆' }}
+                  </div>
+                </div>
+              </div>
+              <div v-else style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; width: 100%; height: 100%;">
+                <span style="font-size: 20px; color: #cbd5e1;">🏆</span>
+                <p style="font-style: italic; font-size: 11px; color: #94a3b8; margin: 0;">Nenhuma conquista em destaque.</p>
+              </div>
+            </div>
+          </div>
+
           <!-- Mini-mapa da Viagem Mais Longa (Perfil Público) -->
           <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 8px;">
             <h3 style="font-size: 11px; font-weight: 800; color: #64748b; margin: 0; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px;">
               🗺️ Rota da Maior Viagem
             </h3>
             <div v-if="publicProfileData.longestTrip" style="position: relative; border-radius: 20px; overflow: hidden; border: 1px solid rgba(0,0,0,0.08); box-shadow: 0 4px 20px rgba(0,0,0,0.06); background: #f8fafc; display: flex; flex-direction: column;">
-              <!-- Map container -->
-              <div ref="publicProfileMapContainer" style="height: 180px; width: 100%; z-index: 1;"></div>
-              <!-- Route details -->
-              <div style="padding: 12px 16px; background: rgba(255,255,255,0.9); backdrop-filter: blur(10px); border-top: 1px solid rgba(0,0,0,0.06); display: flex; flex-direction: column; gap: 6px; font-size: 12px;">
-                <div style="display: flex; align-items: center; gap: 8px; color: #334155; font-weight: 700; min-width: 0;">
-                  <span style="color: #10b981; flex-shrink: 0;">🟢</span>
-                  <span style="text-overflow: ellipsis; overflow: hidden; white-space: nowrap; font-size: 11px;" :title="publicProfileData.longestTrip.startLocation">{{ publicProfileData.longestTrip.startLocation || 'Partida' }}</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 8px; color: #334155; font-weight: 700; min-width: 0;">
-                  <span style="color: #ef4444; flex-shrink: 0;">🏁</span>
-                  <span style="text-overflow: ellipsis; overflow: hidden; white-space: nowrap; font-size: 11px;" :title="publicProfileData.longestTrip.endLocation">{{ publicProfileData.longestTrip.endLocation || 'Chegada' }}</span>
-                </div>
-                <div style="font-size: 10px; color: #64748b; font-weight: 600; margin-top: 4px; display: flex; justify-content: space-between; border-top: 1px dashed rgba(0,0,0,0.06); padding-top: 6px;">
-                  <span>📏 {{ publicProfileData.longestTrip.distanceKm.toFixed(2) }} km</span>
-                  <span>⏱️ {{ publicProfileData.longestTrip.durationMin }} min</span>
-                </div>
-              </div>
+              <!-- Map container (Non-interactive) -->
+              <div ref="publicProfileMapContainer" style="height: 180px; width: 100%; z-index: 1; pointer-events: none;"></div>
             </div>
             <div v-else style="padding: 20px; text-align: center; border-radius: 20px; border: 1.5px dashed rgba(0,0,0,0.08); background: rgba(0,0,0,0.02); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;">
               <span style="font-size: 24px;">📭</span>

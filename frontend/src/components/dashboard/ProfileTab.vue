@@ -21,7 +21,11 @@ const props = defineProps({
   longestTripKm: Number,
   highlightedAchievementsData: Array,
   getFullUrl: Function,
-  longestTrip: Object
+  longestTrip: Object,
+  isOwnProfile: {
+    type: Boolean,
+    default: true
+  }
 });
 
 const emit = defineEmits([
@@ -36,7 +40,8 @@ const emit = defineEmits([
   'handle-trophy-hover',
   'reset-trophy-hover',
   'toggle-editing-profile',
-  'update-text-color'
+  'update-text-color',
+  'go-back-to-own-profile'
 ]);
 
 const profileMapContainer = ref(null);
@@ -58,7 +63,13 @@ async function renderLongestTripRoute() {
 
   profileMap.value = L.map(profileMapContainer.value, {
     zoomControl: false,
-    attributionControl: false
+    attributionControl: false,
+    dragging: false,
+    scrollWheelZoom: false,
+    doubleClickZoom: false,
+    boxZoom: false,
+    touchZoom: false,
+    keyboard: false
   }).setView([-23.55052, -46.633308], 12);
 
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
@@ -229,6 +240,7 @@ onUnmounted(() => {
       </div>
       <!-- Simple edit profile cog button in top right corner of the banner -->
       <button 
+        v-if="isOwnProfile"
         @click.stop="$emit('toggle-editing-profile')" 
         :title="isEditingProfile ? 'Salvar Perfil' : 'Editar Perfil'"
         :style="{ background: isEditingProfile ? '#10b981' : 'rgba(255,255,255,0.25)', border: isEditingProfile ? '1.5px solid #10b981' : '1.5px solid rgba(255,255,255,0.45)' }"
@@ -238,6 +250,16 @@ onUnmounted(() => {
       >
         <span v-if="isEditingProfile" style="line-height: 1;">💾</span>
         <span v-else class="cog-icon" style="line-height: 1;">⚙️</span>
+      </button>
+      <button 
+        v-else
+        @click.stop="$emit('go-back-to-own-profile')" 
+        title="Voltar ao meu Perfil"
+        style="position: absolute; top: 16px; right: 16px; width: 36px; height: 36px; border-radius: 50%; color: white; font-size: 16px; display: flex; align-items: center; justify-content: center; cursor: pointer; backdrop-filter: blur(8px); z-index: 10; transition: all 0.25s; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border: 1.5px solid rgba(255,255,255,0.45); background: rgba(255,255,255,0.25); outline: none;"
+        onmouseover="this.style.transform='scale(1.08)'; this.style.boxShadow='0 6px 16px rgba(0,0,0,0.25)';"
+        onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)';"
+      >
+        🔙
       </button>
     </div>
 
@@ -250,19 +272,8 @@ onUnmounted(() => {
             🗺️ Rota da Maior Viagem
           </h3>
           <div v-if="longestTrip" style="position: relative; border-radius: 20px; overflow: hidden; border: 1px solid rgba(0,0,0,0.08); box-shadow: 0 4px 20px rgba(0,0,0,0.06); background: #f8fafc; display: flex; flex-direction: column;">
-            <!-- Map container (Reduced height, aspect ratio 1.8 / 1 for better fit) -->
-            <div ref="profileMapContainer" style="width: 100%; aspect-ratio: 1.8 / 1; min-height: 170px; z-index: 1;"></div>
-            <!-- Route details -->
-            <div style="padding: 8px 10px; background: rgba(255,255,255,0.9); backdrop-filter: blur(10px); border-top: 1px solid rgba(0,0,0,0.06); display: flex; flex-direction: column; gap: 4px; font-size: 10px;">
-              <div style="display: flex; align-items: center; gap: 6px; color: #334155; font-weight: 700; min-width: 0;">
-                <span style="color: #10b981; flex-shrink: 0;">🟢</span>
-                <span style="text-overflow: ellipsis; overflow: hidden; white-space: nowrap; font-size: 9px;" :title="longestTrip.startLocation">{{ longestTrip.startLocation || 'Partida' }}</span>
-              </div>
-              <div style="display: flex; align-items: center; gap: 6px; color: #334155; font-weight: 700; min-width: 0;">
-                <span style="color: #ef4444; flex-shrink: 0;">🏁</span>
-                <span style="text-overflow: ellipsis; overflow: hidden; white-space: nowrap; font-size: 9px;" :title="longestTrip.endLocation">{{ longestTrip.endLocation || 'Chegada' }}</span>
-              </div>
-            </div>
+            <!-- Map container (Reduced height, aspect ratio 1.8 / 1 for better fit, non-interactive) -->
+            <div ref="profileMapContainer" style="width: 100%; aspect-ratio: 1.8 / 1; min-height: 170px; z-index: 1; pointer-events: none;"></div>
           </div>
           <div v-else style="aspect-ratio: 1.8 / 1; min-height: 170px; text-align: center; border-radius: 20px; border: 1.5px dashed rgba(0,0,0,0.08); background: rgba(0,0,0,0.02); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 12px;">
             <span style="font-size: 20px;">📭</span>
