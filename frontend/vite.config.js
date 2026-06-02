@@ -7,6 +7,7 @@ export default defineConfig({
   server: {
     port: 3002,
     strictPort: true,
-    host: true // Expõe o servidor na rede local do Raspberry Pi
+    host: true, // Expõe o servidor na rede local do Raspberry Pi
+    allowedHosts: true
   }
 });
