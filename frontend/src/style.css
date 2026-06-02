@@ -736,3 +736,111 @@ button:hover .cog-icon {
   transform: rotate(60deg);
 }
 
+.achievements-grid-responsive {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+}
+
+/* Responsividade Mobile */
+@media (max-width: 768px) {
+  /* Recalcular o contêiner geral do iPad */
+  .ipad {
+    width: calc(100vw - 16px) !important;
+    height: calc(100vh - 16px) !important;
+    margin: 8px !important;
+    flex-direction: column-reverse !important; /* Barra de navegação na base no celular */
+    gap: 8px !important;
+  }
+
+  /* Barra de navegação lateral vira barra de navegação inferior */
+  .sidebar {
+    width: 100% !important;
+    height: auto !important;
+    flex-direction: row !important;
+    justify-content: space-around !important;
+    padding: 8px !important;
+    align-self: stretch !important;
+    border-radius: 20px !important;
+    gap: 0 !important;
+    margin-top: 0 !important;
+    box-shadow: 0 -4px 16px rgba(0,0,0,0.06) !important;
+  }
+
+  .nav-btn {
+    width: 48px !important;
+    height: 48px !important;
+    border-radius: 14px !important;
+  }
+
+  /* Painel principal de vidro */
+  .glass {
+    padding: 16px !important;
+    border-radius: 24px !important;
+  }
+  .glass::after {
+    border-radius: 24px 24px 0 0 !important;
+  }
+
+  /* Centralização das informações do banner do perfil */
+  .profile-identity {
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    width: 100% !important;
+    gap: 8px !important;
+  }
+  .profile-identity .avatar-wrapper {
+    align-self: center !important;
+  }
+  .profile-identity div[style*="background: rgba(0, 0, 0, 0.45)"] {
+    align-items: center !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+  
+  /* Ajustes gerais de layout de perfil */
+  .profile-banner-container {
+    height: auto !important;
+    min-height: 220px !important;
+    padding: 24px 16px 16px 16px !important;
+    margin: -16px -16px 0 -16px !important;
+    border-radius: 24px 24px 0 0 !important;
+    justify-content: center !important;
+  }
+  .profile-banner-container::after {
+    border-radius: 24px 24px 0 0 !important;
+  }
+  
+  /* Seção de métricas de estatísticas do perfil */
+  div[style*="grid-template-columns: repeat(3, 1fr)"] {
+    grid-template-columns: repeat(2, 1fr) !important; /* 2 colunas no celular para não espremer */
+    gap: 8px !important;
+  }
+  
+  .metric-card {
+    min-width: 0 !important; /* Permitir que encolha na grid */
+    padding: 10px 4px !important;
+  }
+  
+  /* Grid de Conquistas Responsivo */
+  .achievements-grid-responsive {
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)) !important;
+    gap: 12px !important;
+  }
+
+  /* Ocultar elementos desnecessários no mobile */
+  .hide-on-mobile {
+    display: none !important;
+  }
+}
+
+@media (max-width: 500px) {
+  /* Ajustar cards de métrica para tamanhos menores */
+  .metric-card-val {
+    font-size: 10px !important;
+  }
+  .metric-card-val-unit {
+    font-size: 8px !important;
+  }
+}

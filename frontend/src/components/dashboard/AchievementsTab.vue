@@ -29,7 +29,7 @@ const emit = defineEmits(['open-public-profile']);
     </div>
 
     <!-- Achievements Grid -->
-    <div class="grid grid-cols-5 gap-4 flex-1 overflow-y-auto no-scroll" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; padding: 12px; margin: -12px -12px -12px -12px;">
+    <div class="grid achievements-grid-responsive flex-1 overflow-y-auto no-scroll" style="display: grid; gap: 16px; padding: 12px; margin: -12px -12px -12px -12px;">
       <div 
         v-for="ach in achievementsList" 
         :key="ach.id" 

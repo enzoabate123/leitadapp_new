@@ -52,11 +52,11 @@ const emit = defineEmits(['open-public-profile']);
         
         <!-- Stats -->
         <div style="display: flex; gap: 16px; align-items: center;">
-          <div style="display: flex; flex-direction: column; align-items: flex-end;">
+          <div class="hide-on-mobile" style="display: flex; flex-direction: column; align-items: flex-end;">
             <span style="font-size: 13px; font-weight: 700; color: #1e293b;">{{ user.tripsCount }}</span>
             <span style="font-size: 9px; font-weight: 600; color: #94a3b8; text-transform: uppercase;">Viagens</span>
           </div>
-          <div style="display: flex; flex-direction: column; align-items: flex-end;">
+          <div class="hide-on-mobile" style="display: flex; flex-direction: column; align-items: flex-end;">
             <span style="font-size: 13px; font-weight: 700; color: #1e293b;">{{ user.totalDistance.toFixed(1) }}</span>
             <span style="font-size: 9px; font-weight: 600; color: #94a3b8; text-transform: uppercase;">km</span>
           </div>

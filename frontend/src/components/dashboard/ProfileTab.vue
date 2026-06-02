@@ -156,7 +156,7 @@ onUnmounted(() => {
 <template>
   <div style="position: relative; height: 100%; display: flex; flex-direction: column;">
     <!-- Banner & Profile Identity (covers the top 33% of the glass container) -->
-    <div style="position: relative; height: 33%; min-height: 180px; margin-top: -28px; margin-left: -28px; margin-right: -28px; border-radius: 36px 36px 0 0; overflow: hidden; display: flex; align-items: flex-end; justify-content: flex-start; padding: 20px;">
+    <div class="profile-banner-container" style="position: relative; height: 33%; min-height: 180px; margin-top: -28px; margin-left: -28px; margin-right: -28px; border-radius: 36px 36px 0 0; overflow: hidden; display: flex; align-items: flex-end; justify-content: flex-start; padding: 20px;">
       <!-- Profile Banner Background -->
       <div 
         v-if="bannerUrl" 
