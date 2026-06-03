@@ -99,10 +99,54 @@ const musicX = ref(parseFloat(localStorage.getItem('appMusicX') || '0'));
 const musicY = ref(parseFloat(localStorage.getItem('appMusicY') || '0'));
 const isDraggingMusic = ref(false);
 const hasMoved = ref(false);
+
+let targetX = musicX.value;
+let targetY = musicY.value;
+let currentX = musicX.value;
+let currentY = musicY.value;
+let vx = 0;
+let vy = 0;
 let startX = 0;
 let startY = 0;
 let initialX = 0;
 let initialY = 0;
+let animationFrameId = null;
+
+const STIFFNESS = 0.08;
+const DAMPING = 0.72;
+
+function updateSpring() {
+  if (!isDraggingMusic.value && Math.abs(vx) < 0.01 && Math.abs(vy) < 0.01 && Math.abs(currentX - targetX) < 0.01 && Math.abs(currentY - targetY) < 0.01) {
+    currentX = targetX;
+    currentY = targetY;
+    musicX.value = currentX;
+    musicY.value = currentY;
+    vx = 0;
+    vy = 0;
+    animationFrameId = null;
+    return;
+  }
+  
+  const ax = (targetX - currentX) * STIFFNESS;
+  const ay = (targetY - currentY) * STIFFNESS;
+  
+  vx = (vx + ax) * DAMPING;
+  vy = (vy + ay) * DAMPING;
+  
+  currentX += vx;
+  currentY += vy;
+  
+  musicX.value = currentX;
+  musicY.value = currentY;
+  
+  animationFrameId = requestAnimationFrame(updateSpring);
+}
+
+function startSpringLoop() {
+  if (!animationFrameId) {
+    animationFrameId = requestAnimationFrame(updateSpring);
+  }
+}
 
 function onMusicDragStart(e) {
   if (e.target.closest('button') || e.target.closest('a')) return;
@@ -115,11 +159,13 @@ function onMusicDragStart(e) {
   
   startX = clientX;
   startY = clientY;
-  initialX = musicX.value;
-  initialY = musicY.value;
+  initialX = targetX;
+  initialY = targetY;
   
   window.addEventListener(e.type.startsWith('touch') ? 'touchmove' : 'mousemove', onMusicDragMove, { passive: false });
   window.addEventListener(e.type.startsWith('touch') ? 'touchend' : 'mouseup', onMusicDragEnd);
+  
+  startSpringLoop();
   
   if (!e.type.startsWith('touch')) {
     e.preventDefault();
@@ -139,8 +185,10 @@ function onMusicDragMove(e) {
     hasMoved.value = true;
   }
   
-  musicX.value = initialX + deltaX;
-  musicY.value = initialY + deltaY;
+  targetX = initialX + deltaX;
+  targetY = initialY + deltaY;
+  
+  startSpringLoop();
   
   if (e.cancelable) {
     e.preventDefault();
@@ -149,8 +197,8 @@ function onMusicDragMove(e) {
 
 function onMusicDragEnd(e) {
   isDraggingMusic.value = false;
-  localStorage.setItem('appMusicX', String(musicX.value));
-  localStorage.setItem('appMusicY', String(musicY.value));
+  localStorage.setItem('appMusicX', String(targetX));
+  localStorage.setItem('appMusicY', String(targetY));
   
   window.removeEventListener('mousemove', onMusicDragMove);
   window.removeEventListener('mouseup', onMusicDragEnd);
@@ -203,6 +251,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   if (pollInterval) clearInterval(pollInterval);
+  if (animationFrameId) cancelAnimationFrame(animationFrameId);
   document.body.removeEventListener('click', handleUserInteraction);
   document.body.removeEventListener('touchstart', handleUserInteraction);
   window.removeEventListener('volume-change', handleVolumeChange);
