@@ -45,6 +45,10 @@ const props = defineProps({
   defaultBackgrounds: {
     type: Array,
     required: true
+  },
+  showMusicWidget: {
+    type: Boolean,
+    required: true
   }
 });
 
@@ -276,6 +280,32 @@ function onCustomBgInput(event) {
                     <input :value="appCustomBgUrl" @input="onCustomBgInput" type="text" placeholder="https://exemplo.com/imagem.jpg" style="width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(0,0,0,0.1); background: rgba(255,255,255,0.8); font-size: 13px; outline: none; box-sizing: border-box;" />
                   </div>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Interface do Mapa -->
+        <div>
+          <p class="profile-section-title" style="padding-left:4px">Interface do Mapa</p>
+          <div class="flex flex-col gap-2">
+            <div class="settings-row">
+              <div class="settings-item-left">
+                <div class="settings-icon-box bg-purple-100" style="background-color: #f3e8ff; color: #7c3aed;">
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 16px; height: 16px;">
+                    <path d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
+                  </svg>
+                </div>
+                <div>
+                  <p class="settings-label">Exibir Tocador de Música</p>
+                  <p class="settings-desc">Mostrar widget flutuante de som no mapa</p>
+                </div>
+              </div>
+              <div 
+                :class="['toggle', showMusicWidget ? 'on' : 'off']" 
+                @click="emit('toggle-setting', 'showMusicWidget')"
+              >
+                <div class="toggle-knob"></div>
               </div>
             </div>
           </div>

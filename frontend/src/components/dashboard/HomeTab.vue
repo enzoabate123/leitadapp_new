@@ -22,7 +22,11 @@ const props = defineProps({
   battery: Number,
   totalHours: Number,
   tripStartTime: [Number, String],
-  getFullUrl: Function
+  getFullUrl: Function,
+  showMusicWidget: {
+    type: Boolean,
+    default: true
+  }
 });
 
 const emit = defineEmits([
@@ -185,6 +189,62 @@ function resetMap() {
   map.value.setView([-23.55052, -46.633308], 15);
 }
 
+// Dragging support for the music widget
+const musicX = ref(parseFloat(localStorage.getItem('musicX') || '0'));
+const musicY = ref(parseFloat(localStorage.getItem('musicY') || '0'));
+const isDraggingMusic = ref(false);
+let startX = 0;
+let startY = 0;
+let initialX = 0;
+let initialY = 0;
+
+function onMusicDragStart(e) {
+  if (e.target.closest('.music-btn-compact')) return;
+  
+  isDraggingMusic.value = true;
+  
+  const clientX = e.type.startsWith('touch') ? e.touches[0].clientX : e.clientX;
+  const clientY = e.type.startsWith('touch') ? e.touches[0].clientY : e.clientY;
+  
+  startX = clientX;
+  startY = clientY;
+  initialX = musicX.value;
+  initialY = musicY.value;
+  
+  window.addEventListener(e.type.startsWith('touch') ? 'touchmove' : 'mousemove', onMusicDragMove, { passive: false });
+  window.addEventListener(e.type.startsWith('touch') ? 'touchend' : 'mouseup', onMusicDragEnd);
+  
+  e.preventDefault();
+}
+
+function onMusicDragMove(e) {
+  if (!isDraggingMusic.value) return;
+  
+  const clientX = e.type.startsWith('touch') ? e.touches[0].clientX : e.clientX;
+  const clientY = e.type.startsWith('touch') ? e.touches[0].clientY : e.clientY;
+  
+  const deltaX = clientX - startX;
+  const deltaY = clientY - startY;
+  
+  musicX.value = initialX + deltaX;
+  musicY.value = initialY + deltaY;
+  
+  if (e.cancelable) {
+    e.preventDefault();
+  }
+}
+
+function onMusicDragEnd(e) {
+  isDraggingMusic.value = false;
+  localStorage.setItem('musicX', String(musicX.value));
+  localStorage.setItem('musicY', String(musicY.value));
+  
+  window.removeEventListener('mousemove', onMusicDragMove);
+  window.removeEventListener('mouseup', onMusicDragEnd);
+  window.removeEventListener('touchmove', onMusicDragMove);
+  window.removeEventListener('touchend', onMusicDragEnd);
+}
+
 // Watchers for trip states to update Leaflet layers reactively
 watch(() => props.activeTrip, (newTrip) => {
   if (newTrip) {
@@ -304,22 +364,31 @@ onUnmounted(() => {
         </div>
 
         <!-- Premium Floating Music Widget (Admin only) -->
-        <div v-if="userRole === 'admin'" class="map-floating-music">
-          <div class="music-content-compact">
-            <div class="music-disc-compact" :class="{ spinning: isPlaying }">🎵</div>
-            <div class="music-info-compact">
-              <p class="song-title-compact">{{ currentSong }}</p>
-              <p class="artist-name-compact">{{ currentArtist }}</p>
+        <transition name="fade-music">
+          <div 
+            v-if="userRole === 'admin' && showMusicWidget" 
+            class="map-floating-music"
+            :style="{ transform: `translate3d(${musicX}px, ${musicY}px, 0)` }"
+            @mousedown="onMusicDragStart"
+            @touchstart="onMusicDragStart"
+            style="cursor: grab; will-change: transform; pointer-events: auto;"
+          >
+            <div class="music-content-compact" style="pointer-events: none;">
+              <div class="music-disc-compact" :class="{ spinning: isPlaying }" style="pointer-events: none;">🎵</div>
+              <div class="music-info-compact" style="pointer-events: none; user-select: none;">
+                <p class="song-title-compact">{{ currentSong }}</p>
+                <p class="artist-name-compact">{{ currentArtist }}</p>
+              </div>
+              <button class="music-btn-compact" @click="$emit('toggle-play')" style="pointer-events: auto;">
+                <span v-if="isPlaying">⏸️</span>
+                <span v-else>▶️</span>
+              </button>
             </div>
-            <button class="music-btn-compact" @click="$emit('toggle-play')">
-              <span v-if="isPlaying">⏸️</span>
-              <span v-else>▶️</span>
-            </button>
+            <div class="music-progress-compact" style="pointer-events: none;">
+              <div class="music-progress-bar-compact" :style="{ width: isPlaying ? '45%' : '20%' }"></div>
+            </div>
           </div>
-          <div class="music-progress-compact">
-            <div class="music-progress-bar-compact" :style="{ width: isPlaying ? '45%' : '20%' }"></div>
-          </div>
-        </div>
+        </transition>
       </div>
 
       <!-- Passageiros Atuais (Quando Viagem Ativa) -->

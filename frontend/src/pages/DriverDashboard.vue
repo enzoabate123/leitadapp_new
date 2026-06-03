@@ -166,19 +166,6 @@ async function fetchAchievements() {
   }
 }
 
-async function toggleSetting(key) {
-  let val = false;
-  if (key === 'pushNotifications') { pushNotifications.value = !pushNotifications.value; val = pushNotifications.value; }
-  if (key === 'xpAlerts') { xpAlerts.value = !xpAlerts.value; val = xpAlerts.value; }
-  if (key === 'socialRanking') { socialRanking.value = !socialRanking.value; val = socialRanking.value; }
-  if (key === 'publicProfile') { publicProfile.value = !publicProfile.value; val = publicProfile.value; }
-  
-  try {
-    await apiFetch('/api/settings', { method: 'POST', body: JSON.stringify({ [key]: val }) });
-  } catch (e) {
-    console.error(e);
-  }
-}
 
 // Simulação de Viagem
 const tripActive = ref(false);
@@ -1168,6 +1155,7 @@ const pushNotifications = ref(true);
 const xpAlerts = ref(true);
 const socialRanking = ref(false);
 const publicProfile = ref(true);
+const showMusicWidget = ref(localStorage.getItem('showMusicWidget') !== 'false');
 
 const sfxVolume = ref(parseFloat(localStorage.getItem('sfxVolumeMultiplier') ?? '0.5'));
 const musicVolume = ref(parseFloat(localStorage.getItem('musicVolume') ?? '0.3'));
@@ -1180,6 +1168,28 @@ function updateVolume(type) {
   } else if (type === 'music') {
     localStorage.setItem('musicVolume', musicVolume.value.toString());
     window.dispatchEvent(new CustomEvent('volume-change', { detail: { type: 'music', value: musicVolume.value } }));
+  }
+}
+
+async function toggleSetting(key) {
+  if (key === 'showMusicWidget') {
+    showMusicWidget.value = !showMusicWidget.value;
+    localStorage.setItem('showMusicWidget', String(showMusicWidget.value));
+    return;
+  }
+  let val = false;
+  if (key === 'pushNotifications') { pushNotifications.value = !pushNotifications.value; val = pushNotifications.value; }
+  if (key === 'xpAlerts') { xpAlerts.value = !xpAlerts.value; val = xpAlerts.value; }
+  if (key === 'socialRanking') { socialRanking.value = !socialRanking.value; val = socialRanking.value; }
+  if (key === 'publicProfile') { publicProfile.value = !publicProfile.value; val = publicProfile.value; }
+  
+  try {
+    await apiFetch('/api/settings', {
+      method: 'POST',
+      body: JSON.stringify({ [key]: val })
+    });
+  } catch (e) {
+    console.error('Erro ao salvar configuração:', e);
   }
 }
 
@@ -1727,6 +1737,7 @@ modalsToWatch.forEach(m => {
           :totalHours="totalHours"
           :tripStartTime="tripStartTime"
           :getFullUrl="getFullUrl"
+          :showMusicWidget="showMusicWidget"
           @open-start-trip-modal="openStartTripModal"
           @end-trip="endTrip"
           @show-qr-code="showQrCodeModal = true"
@@ -1809,6 +1820,7 @@ modalsToWatch.forEach(m => {
           :xpAlerts="xpAlerts"
           :socialRanking="socialRanking"
           :publicProfile="publicProfile"
+          :showMusicWidget="showMusicWidget"
           v-model:sfxVolume="sfxVolume"
           v-model:musicVolume="musicVolume"
           v-model:appBgType="appBgType"
