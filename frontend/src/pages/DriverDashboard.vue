@@ -1737,7 +1737,6 @@ modalsToWatch.forEach(m => {
           :totalHours="totalHours"
           :tripStartTime="tripStartTime"
           :getFullUrl="getFullUrl"
-          :showMusicWidget="showMusicWidget"
           @open-start-trip-modal="openStartTripModal"
           @end-trip="endTrip"
           @show-qr-code="showQrCodeModal = true"

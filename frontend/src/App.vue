@@ -93,6 +93,81 @@ const handleUserInteraction = () => {
   }
 };
 
+const showMusicWidget = ref(localStorage.getItem('showMusicWidget') !== 'false');
+
+const musicX = ref(parseFloat(localStorage.getItem('appMusicX') || '0'));
+const musicY = ref(parseFloat(localStorage.getItem('appMusicY') || '0'));
+const isDraggingMusic = ref(false);
+const hasMoved = ref(false);
+let startX = 0;
+let startY = 0;
+let initialX = 0;
+let initialY = 0;
+
+function onMusicDragStart(e) {
+  if (e.target.closest('button') || e.target.closest('a')) return;
+  
+  isDraggingMusic.value = true;
+  hasMoved.value = false;
+  
+  const clientX = e.type.startsWith('touch') ? e.touches[0].clientX : e.clientX;
+  const clientY = e.type.startsWith('touch') ? e.touches[0].clientY : e.clientY;
+  
+  startX = clientX;
+  startY = clientY;
+  initialX = musicX.value;
+  initialY = musicY.value;
+  
+  window.addEventListener(e.type.startsWith('touch') ? 'touchmove' : 'mousemove', onMusicDragMove, { passive: false });
+  window.addEventListener(e.type.startsWith('touch') ? 'touchend' : 'mouseup', onMusicDragEnd);
+  
+  e.preventDefault();
+}
+
+function onMusicDragMove(e) {
+  if (!isDraggingMusic.value) return;
+  
+  const clientX = e.type.startsWith('touch') ? e.touches[0].clientX : e.clientX;
+  const clientY = e.type.startsWith('touch') ? e.touches[0].clientY : e.clientY;
+  
+  const deltaX = clientX - startX;
+  const deltaY = clientY - startY;
+  
+  if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) {
+    hasMoved.value = true;
+  }
+  
+  musicX.value = initialX + deltaX;
+  musicY.value = initialY + deltaY;
+  
+  if (e.cancelable) {
+    e.preventDefault();
+  }
+}
+
+function onMusicDragEnd(e) {
+  isDraggingMusic.value = false;
+  localStorage.setItem('appMusicX', String(musicX.value));
+  localStorage.setItem('appMusicY', String(musicY.value));
+  
+  window.removeEventListener('mousemove', onMusicDragMove);
+  window.removeEventListener('mouseup', onMusicDragEnd);
+  window.removeEventListener('touchmove', onMusicDragMove);
+  window.removeEventListener('touchend', onMusicDragEnd);
+}
+
+function handleWidgetClick(e) {
+  if (hasMoved.value) {
+    hasMoved.value = false;
+    return;
+  }
+  isExpanded.value = !isExpanded.value;
+}
+
+const handleMusicToggleEvent = (e) => {
+  showMusicWidget.value = e.detail;
+};
+
 let pollInterval = null;
 
 onMounted(async () => {
@@ -121,6 +196,7 @@ onMounted(async () => {
   document.body.addEventListener('click', handleUserInteraction);
   document.body.addEventListener('touchstart', handleUserInteraction);
   window.addEventListener('volume-change', handleVolumeChange);
+  window.addEventListener('music-widget-toggle', handleMusicToggleEvent);
 });
 
 onUnmounted(() => {
@@ -128,6 +204,7 @@ onUnmounted(() => {
   document.body.removeEventListener('click', handleUserInteraction);
   document.body.removeEventListener('touchstart', handleUserInteraction);
   window.removeEventListener('volume-change', handleVolumeChange);
+  window.removeEventListener('music-widget-toggle', handleMusicToggleEvent);
 });
 </script>
 
@@ -135,30 +212,40 @@ onUnmounted(() => {
   <router-view />
   
   <!-- Floating Glassmorphic Music Player Widget -->
-  <div v-if="activeTrack" class="music-widget" :class="{ expanded: isExpanded }" @click="isExpanded = !isExpanded">
-    <audio ref="audioRef" loop></audio>
-    <div class="widget-content">
-      <div 
-        class="cover-art" 
-        :class="{ rotating: isPlaying }"
-        :style="activeTrack.coverUrl ? { backgroundImage: `url(${API_URL}${activeTrack.coverUrl})` } : {}"
-      >
-        <div v-if="!activeTrack.coverUrl" class="cover-fallback">🎵</div>
+  <transition name="fade-music">
+    <div 
+      v-if="activeTrack && showMusicWidget" 
+      class="music-widget" 
+      :class="{ expanded: isExpanded, dragging: isDraggingMusic }" 
+      :style="{ transform: `translate3d(${musicX}px, ${musicY}px, 0)` }"
+      @mousedown="onMusicDragStart"
+      @touchstart="onMusicDragStart"
+      @click="handleWidgetClick"
+    >
+      <audio ref="audioRef" loop></audio>
+      <div class="widget-content">
+        <div 
+          class="cover-art" 
+          :class="{ rotating: isPlaying }"
+          :style="activeTrack.coverUrl ? { backgroundImage: `url(${API_URL}${activeTrack.coverUrl})` } : {}"
+        >
+          <div v-if="!activeTrack.coverUrl" class="cover-fallback">🎵</div>
+        </div>
+        <div class="track-info">
+          <div class="track-status">{{ isPlaying ? 'TOCANDO' : 'PAUSADO' }}</div>
+          <div class="track-title" :title="activeTrack.title">{{ activeTrack.title }}</div>
+        </div>
+        <button class="control-btn" @click.stop="togglePlay" :title="isPlaying ? 'Pausar' : 'Tocar'">
+          <svg v-if="isPlaying" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+          </svg>
+          <svg v-else viewBox="0 0 24 24" fill="currentColor">
+            <path d="M8 5v14l11-7z"/>
+          </svg>
+        </button>
       </div>
-      <div class="track-info">
-        <div class="track-status">{{ isPlaying ? 'TOCANDO' : 'PAUSADO' }}</div>
-        <div class="track-title" :title="activeTrack.title">{{ activeTrack.title }}</div>
-      </div>
-      <button class="control-btn" @click.stop="togglePlay" :title="isPlaying ? 'Pausar' : 'Tocar'">
-        <svg v-if="isPlaying" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-        </svg>
-        <svg v-else viewBox="0 0 24 24" fill="currentColor">
-          <path d="M8 5v14l11-7z"/>
-        </svg>
-      </button>
     </div>
-  </div>
+  </transition>
 </template>
 
 <style scoped>
@@ -180,7 +267,7 @@ onUnmounted(() => {
   padding: 11px;
   overflow: hidden;
   user-select: none;
-  cursor: pointer;
+  cursor: grab;
   animation: slide-in 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1),
               padding 0.4s cubic-bezier(0.16, 1, 0.3, 1),
@@ -189,9 +276,16 @@ onUnmounted(() => {
               box-shadow 0.3s;
 }
 
+.music-widget.dragging {
+  cursor: grabbing;
+  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+              padding 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+              background 0.3s, 
+              box-shadow 0.3s !important;
+}
+
 .music-widget:hover {
   background: rgba(255, 255, 255, 0.35);
-  transform: translateY(-2px);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2), 
               inset 0 1px 1px rgba(255, 255, 255, 0.6);
 }
@@ -316,5 +410,16 @@ onUnmounted(() => {
     transform: translateY(0) scale(1);
     opacity: 1;
   }
+}
+
+/* Transição suave do tocador de música */
+.fade-music-enter-active,
+.fade-music-leave-active {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+.fade-music-enter-from,
+.fade-music-leave-to {
+  opacity: 0;
+  transform: scale(0.9) translate3d(var(--music-x, 0), var(--music-y, 0), 0) !important;
 }
 </style>

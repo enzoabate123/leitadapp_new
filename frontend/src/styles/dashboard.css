@@ -743,15 +743,3 @@
     overflow: hidden !important;
   }
 }
-
-/* Transição suave do tocador de música */
-.fade-music-enter-active,
-.fade-music-leave-active {
-  transition: opacity 0.3s ease, transform 0.3s ease;
-}
-.fade-music-enter-from,
-.fade-music-leave-to {
-  opacity: 0;
-  transform: scale(0.9) translate3d(var(--music-x, 0), var(--music-y, 0), 0) !important;
-}
-
