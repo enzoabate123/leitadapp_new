@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, onUnmounted, ref, nextTick } from 'vue';
+import { onMounted, onUnmounted, ref, nextTick, watch } from 'vue';
 import { sfxHover, sfxClick } from './sounds';
 
 const API_URL = (() => {
@@ -115,18 +115,37 @@ let animationFrameId = null;
 const STIFFNESS = 0.08;
 const DAMPING = 0.72;
 
-function updateSpring() {
-  if (!isDraggingMusic.value && Math.abs(vx) < 0.01 && Math.abs(vy) < 0.01 && Math.abs(currentX - targetX) < 0.01 && Math.abs(currentY - targetY) < 0.01) {
-    currentX = targetX;
-    currentY = targetY;
-    musicX.value = currentX;
-    musicY.value = currentY;
-    vx = 0;
-    vy = 0;
-    animationFrameId = null;
-    return;
-  }
+function clampToScreen() {
+  const widgetWidth = isExpanded.value ? 280 : 64;
+  const widgetHeight = 64;
+  const padding = 10;
   
+  const minX = -20 + padding;
+  const maxX = window.innerWidth - 20 - widgetWidth - padding;
+  const minY = -(window.innerHeight - 20 - widgetHeight) + padding;
+  const maxY = 20 - padding;
+  
+  if (targetX < minX) targetX = minX;
+  if (targetX > maxX) targetX = maxX;
+  if (targetY < minY) targetY = minY;
+  if (targetY > maxY) targetY = maxY;
+  
+  currentX = targetX;
+  currentY = targetY;
+  musicX.value = currentX;
+  musicY.value = currentY;
+}
+
+function updateSpring() {
+  const widgetWidth = isExpanded.value ? 280 : 64;
+  const widgetHeight = 64;
+  const padding = 10;
+  
+  const minX = -20 + padding;
+  const maxX = window.innerWidth - 20 - widgetWidth - padding;
+  const minY = -(window.innerHeight - 20 - widgetHeight) + padding;
+  const maxY = 20 - padding;
+
   const ax = (targetX - currentX) * STIFFNESS;
   const ay = (targetY - currentY) * STIFFNESS;
   
@@ -136,8 +155,42 @@ function updateSpring() {
   currentX += vx;
   currentY += vy;
   
+  // Boundary check and bounce
+  if (currentX < minX) {
+    currentX = minX;
+    vx = -vx * 0.5;
+    targetX = minX;
+  } else if (currentX > maxX) {
+    currentX = maxX;
+    vx = -vx * 0.5;
+    targetX = maxX;
+  }
+  
+  if (currentY < minY) {
+    currentY = minY;
+    vy = -vy * 0.5;
+    targetY = minY;
+  } else if (currentY > maxY) {
+    currentY = maxY;
+    vy = -vy * 0.5;
+    targetY = maxY;
+  }
+  
   musicX.value = currentX;
   musicY.value = currentY;
+  
+  if (!isDraggingMusic.value && Math.abs(vx) < 0.01 && Math.abs(vy) < 0.01 && Math.abs(currentX - targetX) < 0.01 && Math.abs(currentY - targetY) < 0.01) {
+    currentX = targetX;
+    currentY = targetY;
+    musicX.value = currentX;
+    musicY.value = currentY;
+    vx = 0;
+    vy = 0;
+    animationFrameId = null;
+    localStorage.setItem('appMusicX', String(targetX));
+    localStorage.setItem('appMusicY', String(targetY));
+    return;
+  }
   
   animationFrameId = requestAnimationFrame(updateSpring);
 }
@@ -185,8 +238,26 @@ function onMusicDragMove(e) {
     hasMoved.value = true;
   }
   
-  targetX = initialX + deltaX;
-  targetY = initialY + deltaY;
+  let newTargetX = initialX + deltaX;
+  let newTargetY = initialY + deltaY;
+  
+  // Constraint checks during drag move
+  const widgetWidth = isExpanded.value ? 280 : 64;
+  const widgetHeight = 64;
+  const padding = 10;
+  
+  const minX = -20 + padding;
+  const maxX = window.innerWidth - 20 - widgetWidth - padding;
+  const minY = -(window.innerHeight - 20 - widgetHeight) + padding;
+  const maxY = 20 - padding;
+  
+  if (newTargetX < minX) newTargetX = minX;
+  if (newTargetX > maxX) newTargetX = maxX;
+  if (newTargetY < minY) newTargetY = minY;
+  if (newTargetY > maxY) newTargetY = maxY;
+  
+  targetX = newTargetX;
+  targetY = newTargetY;
   
   startSpringLoop();
   
@@ -247,6 +318,18 @@ onMounted(async () => {
   document.body.addEventListener('touchstart', handleUserInteraction);
   window.addEventListener('volume-change', handleVolumeChange);
   window.addEventListener('music-widget-toggle', handleMusicToggleEvent);
+  window.addEventListener('resize', clampToScreen);
+  
+  // Watch if expanding pushes it off-screen, pull it back in
+  watch(isExpanded, () => {
+    nextTick(() => {
+      clampToScreen();
+      startSpringLoop();
+    });
+  });
+  
+  // Run initial clamp in case it was dragged out or screen loaded small
+  clampToScreen();
 });
 
 onUnmounted(() => {
@@ -256,6 +339,7 @@ onUnmounted(() => {
   document.body.removeEventListener('touchstart', handleUserInteraction);
   window.removeEventListener('volume-change', handleVolumeChange);
   window.removeEventListener('music-widget-toggle', handleMusicToggleEvent);
+  window.removeEventListener('resize', clampToScreen);
 });
 </script>
 
