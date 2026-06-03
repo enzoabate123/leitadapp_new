@@ -1175,6 +1175,7 @@ async function toggleSetting(key) {
   if (key === 'showMusicWidget') {
     showMusicWidget.value = !showMusicWidget.value;
     localStorage.setItem('showMusicWidget', String(showMusicWidget.value));
+    window.dispatchEvent(new CustomEvent('music-widget-toggle', { detail: showMusicWidget.value }));
     return;
   }
   let val = false;
