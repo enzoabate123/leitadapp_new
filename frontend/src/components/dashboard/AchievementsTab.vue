@@ -11,22 +11,6 @@ const emit = defineEmits(['open-public-profile']);
 
 <template>
   <div class="flex flex-col h-full gap-5">
-    <!-- Header -->
-    <div class="achievements-header" style="display: flex; justify-content: space-between; align-items: center;">
-      <div class="achievements-title-block" style="display: flex; align-items: center; gap: 12px;">
-        <div class="achievements-icon-box" style="font-size: 24px;">👑</div>
-        <div>
-          <h1 class="title-main" style="margin: 0;">Galeria de Prêmios</h1>
-          <p style="color:#64748b; font-size:14px; font-weight:500; margin: 2px 0 0 0;">Colecione todos os selos!</p>
-        </div>
-      </div>
-      <div class="achievements-progress-meta" style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
-        <span class="profile-section-title" style="margin-bottom:0">Nível {{ level }}</span>
-        <div class="achievements-progress-bar" style="width: 120px; height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden;">
-          <div class="progress-fill" style="width:80%; height: 100%; background: #3b82f6;"></div>
-        </div>
-      </div>
-    </div>
 
     <!-- Achievements Grid -->
     <div class="grid achievements-grid-responsive flex-1 overflow-y-auto no-scroll" style="display: grid; gap: 16px; padding: 12px; margin: -12px -12px -12px -12px;">

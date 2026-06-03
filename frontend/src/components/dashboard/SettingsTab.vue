@@ -88,7 +88,6 @@ function onCustomBgInput(event) {
 <template>
   <div class="settings-tab-container">
     <div class="profile-card no-hover" style="backdrop-filter: blur(10px); padding: 24px;">
-      <h2 style="font-size: 24px; font-weight: 800; color: #1e293b; margin: 0 0 20px 0; font-family: 'Space Grotesk', sans-serif;">Ajustes e Preferências</h2>
       
       <div class="flex flex-col gap-6">
         <!-- Conta -->

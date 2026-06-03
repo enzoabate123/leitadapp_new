@@ -9,14 +9,6 @@ const emit = defineEmits(['open-public-profile']);
 
 <template>
   <div class="flex flex-col h-full gap-5">
-    <!-- Header -->
-    <div class="achievements-header" style="display: flex; align-items: center; gap: 12px;">
-      <div class="achievements-icon-box" style="background-color: #fef08a; font-size: 24px;">🏆</div>
-      <div>
-        <h1 class="title-main" style="margin: 0;">Ranking Global</h1>
-        <p style="color:#64748b; font-size:14px; font-weight:500; margin: 2px 0 0 0;">Veja quem são os melhores motoristas</p>
-      </div>
-    </div>
 
     <!-- Ranking List -->
     <div class="flex-1 overflow-y-auto no-scroll" style="display: flex; flex-direction: column; gap: 8px; padding: 12px; margin: -12px -12px -12px -12px;">
