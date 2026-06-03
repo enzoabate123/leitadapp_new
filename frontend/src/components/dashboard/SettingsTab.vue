@@ -285,9 +285,9 @@ function onCustomBgInput(event) {
           </div>
         </div>
 
-        <!-- Interface do Mapa -->
+        <!-- Interface do Aplicativo -->
         <div>
-          <p class="profile-section-title" style="padding-left:4px">Interface do Mapa</p>
+          <p class="profile-section-title" style="padding-left:4px">Interface do Aplicativo</p>
           <div class="flex flex-col gap-2">
             <div class="settings-row">
               <div class="settings-item-left">
@@ -298,7 +298,7 @@ function onCustomBgInput(event) {
                 </div>
                 <div>
                   <p class="settings-label">Exibir Tocador de Música</p>
-                  <p class="settings-desc">Mostrar widget flutuante de som no mapa</p>
+                  <p class="settings-desc">Mostrar tocador de música flutuante na tela</p>
                 </div>
               </div>
               <div 
