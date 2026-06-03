@@ -121,7 +121,9 @@ function onMusicDragStart(e) {
   window.addEventListener(e.type.startsWith('touch') ? 'touchmove' : 'mousemove', onMusicDragMove, { passive: false });
   window.addEventListener(e.type.startsWith('touch') ? 'touchend' : 'mouseup', onMusicDragEnd);
   
-  e.preventDefault();
+  if (!e.type.startsWith('touch')) {
+    e.preventDefault();
+  }
 }
 
 function onMusicDragMove(e) {
@@ -212,48 +214,57 @@ onUnmounted(() => {
   <router-view />
   
   <!-- Floating Glassmorphic Music Player Widget -->
-  <transition name="fade-music">
-    <div 
-      v-if="activeTrack && showMusicWidget" 
-      class="music-widget" 
-      :class="{ expanded: isExpanded, dragging: isDraggingMusic }" 
-      :style="{ transform: `translate3d(${musicX}px, ${musicY}px, 0)` }"
-      @mousedown="onMusicDragStart"
-      @touchstart="onMusicDragStart"
-      @click="handleWidgetClick"
-    >
-      <audio ref="audioRef" loop></audio>
-      <div class="widget-content">
-        <div 
-          class="cover-art" 
-          :class="{ rotating: isPlaying }"
-          :style="activeTrack.coverUrl ? { backgroundImage: `url(${API_URL}${activeTrack.coverUrl})` } : {}"
-        >
-          <div v-if="!activeTrack.coverUrl" class="cover-fallback">🎵</div>
+  <div 
+    class="music-widget-wrapper" 
+    :style="{ transform: `translate3d(${musicX}px, ${musicY}px, 0)` }"
+  >
+    <transition name="fade-music">
+      <div 
+        v-if="activeTrack && showMusicWidget" 
+        class="music-widget" 
+        :class="{ expanded: isExpanded, dragging: isDraggingMusic }" 
+        @mousedown="onMusicDragStart"
+        @touchstart="onMusicDragStart"
+        @click="handleWidgetClick"
+      >
+        <audio ref="audioRef" loop></audio>
+        <div class="widget-content">
+          <div 
+            class="cover-art" 
+            :class="{ rotating: isPlaying }"
+            :style="activeTrack.coverUrl ? { backgroundImage: `url(${API_URL}${activeTrack.coverUrl})` } : {}"
+          >
+            <div v-if="!activeTrack.coverUrl" class="cover-fallback">🎵</div>
+          </div>
+          <div class="track-info">
+            <div class="track-status">{{ isPlaying ? 'TOCANDO' : 'PAUSADO' }}</div>
+            <div class="track-title" :title="activeTrack.title">{{ activeTrack.title }}</div>
+          </div>
+          <button class="control-btn" @click.stop="togglePlay" :title="isPlaying ? 'Pausar' : 'Tocar'">
+            <svg v-if="isPlaying" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+            </svg>
+            <svg v-else viewBox="0 0 24 24" fill="currentColor">
+              <path d="M8 5v14l11-7z"/>
+            </svg>
+          </button>
         </div>
-        <div class="track-info">
-          <div class="track-status">{{ isPlaying ? 'TOCANDO' : 'PAUSADO' }}</div>
-          <div class="track-title" :title="activeTrack.title">{{ activeTrack.title }}</div>
-        </div>
-        <button class="control-btn" @click.stop="togglePlay" :title="isPlaying ? 'Pausar' : 'Tocar'">
-          <svg v-if="isPlaying" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-          </svg>
-          <svg v-else viewBox="0 0 24 24" fill="currentColor">
-            <path d="M8 5v14l11-7z"/>
-          </svg>
-        </button>
       </div>
-    </div>
-  </transition>
+    </transition>
+  </div>
 </template>
 
 <style scoped>
-.music-widget {
+.music-widget-wrapper {
   position: fixed;
   bottom: 20px;
   left: 20px;
   z-index: 999999;
+  pointer-events: none;
+}
+
+.music-widget {
+  pointer-events: auto;
   width: 64px;
   height: 64px;
   box-sizing: border-box;
@@ -269,17 +280,17 @@ onUnmounted(() => {
   user-select: none;
   cursor: grab;
   animation: slide-in 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1),
-              padding 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+  transition: width 0.5s cubic-bezier(0.34, 1.56, 0.64, 1),
+              padding 0.5s cubic-bezier(0.34, 1.56, 0.64, 1),
               background 0.3s, 
-              transform 0.3s, 
+              transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), 
               box-shadow 0.3s;
 }
 
 .music-widget.dragging {
   cursor: grabbing;
-  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1),
-              padding 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+  transition: width 0.5s cubic-bezier(0.34, 1.56, 0.64, 1),
+              padding 0.5s cubic-bezier(0.34, 1.56, 0.64, 1),
               background 0.3s, 
               box-shadow 0.3s !important;
 }
@@ -288,6 +299,12 @@ onUnmounted(() => {
   background: rgba(255, 255, 255, 0.35);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2), 
               inset 0 1px 1px rgba(255, 255, 255, 0.6);
+}
+
+.music-widget:active:not(.dragging) {
+  transform: scale(0.94);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1), 
+              inset 0 1px 1px rgba(255, 255, 255, 0.4);
 }
 
 .music-widget.expanded {
@@ -413,13 +430,15 @@ onUnmounted(() => {
 }
 
 /* Transição suave do tocador de música */
-.fade-music-enter-active,
+.fade-music-enter-active {
+  transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
 .fade-music-leave-active {
-  transition: opacity 0.3s ease, transform 0.3s ease;
+  transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .fade-music-enter-from,
 .fade-music-leave-to {
   opacity: 0;
-  transform: scale(0.9) translate3d(var(--music-x, 0), var(--music-y, 0), 0) !important;
+  transform: scale(0.8);
 }
 </style>
