@@ -1,5 +1,4 @@
 <script setup>
-import { defineProps, defineEmits } from 'vue';
 
 const props = defineProps({
   loginForm: {
@@ -38,11 +37,11 @@ const emit = defineEmits(['submit']);
       <form @submit.prevent="emit('submit')" class="xp-form">
         <div class="input-group">
           <label>Usuário Administrador:</label>
-          <input :value="loginForm.username" @input="loginForm.username = $event.target.value" type="text" placeholder="Ex: admin" required />
+          <input :value="loginForm.username" @input="emit('update:username', $event.target.value)" type="text" placeholder="Ex: admin" required />
         </div>
         <div class="input-group">
           <label>Senha do Sistema:</label>
-          <input :value="loginForm.password" @input="loginForm.password = $event.target.value" type="password" placeholder="••••••••" required />
+          <input :value="loginForm.password" @input="emit('update:password', $event.target.value)" type="password" placeholder="••••••••" required />
         </div>
 
         <p v-if="loginError" class="xp-error-text">{{ loginError }}</p>

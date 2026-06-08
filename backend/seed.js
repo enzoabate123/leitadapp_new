@@ -3,11 +3,7 @@ import crypto from 'node:crypto';
 
 const prisma = new PrismaClient();
 
-function hashPassword(password) {
-  const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.scryptSync(password, salt, 64).toString('hex');
-  return `${salt}:${hash}`;
-}
+import { hashPassword } from './utils/crypto.js';
 
 const achievements = [
   { key: 'leitado-silencioso', title: 'Leitado silencioso', description: 'Sem conversinhas', emoji: '💨' },
@@ -28,6 +24,10 @@ const achievements = [
 ];
 
 async function main() {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Seed proibido em produção para evitar perda de dados.');
+  }
+
   console.log('🌱 Iniciando seed...');
 
   // Limpa dados existentes em ordem de dependência
@@ -64,27 +64,27 @@ async function main() {
   console.log(`✅ ${defaultBackgrounds.length} imagens de fundo criadas`);
 
   // Cria usuário de teste
-  const hashedPassword = hashPassword('astrea123');
+  const userPassword = process.env.SEED_USER_PASSWORD || 'astrea123';
+  const hashedPassword = hashPassword(userPassword);
   const user = await prisma.user.create({
     data: {
       username: 'Astrea',
       email: 'astrea@email.com',
       password: hashedPassword,
       role: 'driver',
-      tripsCount: 6,
     },
   });
   console.log(`✅ Usuário criado: ${user.username} (id: ${user.id})`);
 
   // Cria usuário admin padrão
-  const adminPassword = hashPassword('admin123');
+  const adminPass = process.env.SEED_ADMIN_PASSWORD || 'admin123';
+  const adminPassword = hashPassword(adminPass);
   const adminUser = await prisma.user.create({
     data: {
       username: 'admin',
       email: 'admin@email.com',
       password: adminPassword,
       role: 'admin',
-      tripsCount: 0,
     },
   });
   console.log(`✅ Usuário Administrador criado: ${adminUser.username} (id: ${adminUser.id})`);
@@ -94,7 +94,7 @@ async function main() {
     data: {
       userId: user.id,
       pushNotifications: true,
-      xpAlerts: true,
+      pointsAlerts: true,
       socialRanking: false,
       publicProfile: true,
       bgType: 'bliss',
@@ -105,7 +105,7 @@ async function main() {
     data: {
       userId: adminUser.id,
       pushNotifications: true,
-      xpAlerts: false,
+      pointsAlerts: false,
       socialRanking: false,
       publicProfile: false,
       bgType: 'bliss',
@@ -135,17 +135,11 @@ async function main() {
   // Score inicial
   await prisma.score.create({
     data: {
-      points: 2500,
+      points: 3700,
       userId: user.id,
     },
   });
-  await prisma.score.create({
-    data: {
-      points: 1200,
-      userId: user.id,
-    },
-  });
-  console.log('✅ Scores iniciais criados (total: 3700 pts)');
+  console.log('✅ Score inicial criado (3700 pts)');
 
   // Viagens iniciais com Waypoints e Medias
   const trip1 = await prisma.trip.create({
@@ -154,7 +148,6 @@ async function main() {
       distanceKm: 15.2,
       durationMin: 25,
       avgSpeed: 45.0,
-      xpEarned: 152,
       name: 'Corrida Matinal',
       startLocation: 'Rua das Flores, 123',
       endLocation: 'Av. Paulista, 1000',

@@ -14,8 +14,7 @@ model User {
   password        String
   role            String            @default("driver")
   createdAt       DateTime          @default(now())
-  tripsCount      Int               @default(0)
-  scores          Score[]
+  score           Score?
   achievements    UserAchievement[]
   trips           Trip[]
   settings        Settings?
@@ -28,12 +27,13 @@ model User {
   highlightedAchievements String?
   profileTextColor String? @default("#ffffff")
   bannerPositionY  String? @default("50%")
+  requests        UserRequest[]
 }
 
 model Score {
   id        Int      @id @default(autoincrement())
   points    Int
-  userId    Int
+  userId    Int      @unique
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   updatedAt DateTime @updatedAt
 }
@@ -65,7 +65,6 @@ model Trip {
   distanceKm      Float
   durationMin     Int
   avgSpeed        Float?
-  xpEarned        Int
   createdAt       DateTime    @default(now())
   name            String?
   startLocation   String?
@@ -122,11 +121,13 @@ model Settings {
   id                Int     @id @default(autoincrement())
   userId            Int     @unique
   pushNotifications Boolean @default(true)
-  xpAlerts          Boolean @default(true)
+  pointsAlerts      Boolean @default(true)
   socialRanking     Boolean @default(false)
   publicProfile     Boolean @default(true)
   bgType            String  @default("bliss")
   customBgUrl       String  @default("")
+  spotifyConnected  Boolean @default(false)
+  spotifyRefreshToken String?
   user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
@@ -144,5 +145,15 @@ model MusicTrack {
   audioUrl  String
   isActive  Boolean  @default(false)
   createdAt DateTime @default(now())
+}
+
+model UserRequest {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  type      String   // "trip" | "achievement" | "music" | "background"
+  details   String   // JSON string containing details of the request
+  status    String   @default("pending") // "pending" | "approved" | "rejected"
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 

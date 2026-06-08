@@ -1,0 +1,1 @@
+export const DEFAULT_COORDS = [-23.55052, -46.633308];

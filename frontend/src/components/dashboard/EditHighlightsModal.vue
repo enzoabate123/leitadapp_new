@@ -27,6 +27,19 @@ const toggleHighlight = (id) => {
   }
 };
 
+function getRarityColor(glowColor) {
+  const colorMap = {
+    cyan: '#06b6d4',      // ciano/cyan
+    emerald: '#10b981',   // esmeralda
+    purple: '#a855f7',    // roxo
+    gold: '#f59e0b',      // ouro/gold
+    yellow: '#eab308',    // amarelo
+    rose: '#ec4899',      // rosa/rose
+    green: '#22c55e',     // verde
+  };
+  return colorMap[glowColor] || '#3b82f6'; // fallback to blue
+}
+
 const handleSave = () => {
   emit('save', pendingHighlights.value);
 };
@@ -44,8 +57,8 @@ const handleSave = () => {
           :key="ach.id"
           @click="toggleHighlight(ach.id)"
           :style="{
-            border: pendingHighlights.includes(ach.id) ? `2px solid ${ach.glowColor || '#3b82f6'}` : '2px solid transparent',
-            background: pendingHighlights.includes(ach.id) ? `${ach.glowColor}15` : 'rgba(0,0,0,0.03)',
+            border: pendingHighlights.includes(ach.id) ? `2px solid ${getRarityColor(ach.glowColor)}` : '2px solid transparent',
+            background: pendingHighlights.includes(ach.id) ? `${getRarityColor(ach.glowColor)}1a` : 'rgba(0,0,0,0.03)',
             opacity: (!pendingHighlights.includes(ach.id) && pendingHighlights.length >= 3) ? '0.5' : '1',
             cursor: (!pendingHighlights.includes(ach.id) && pendingHighlights.length >= 3) ? 'not-allowed' : 'pointer'
           }"

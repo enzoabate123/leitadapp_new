@@ -36,3 +36,7 @@ pnpm-debug.log*
 *.njsproj
 *.sln
 *.sw?
+
+# Uploaded user files
+backend/uploads/
+backend/data/

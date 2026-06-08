@@ -1,20 +1,17 @@
 <script setup>
-import { onMounted, onUnmounted, ref, nextTick, watch } from 'vue';
+import { onMounted, onUnmounted, ref, nextTick, watch, computed } from 'vue';
 import { sfxHover, sfxClick } from './sounds';
 
-const API_URL = (() => {
-  const { hostname, protocol } = window.location;
-  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.')) {
-    return `${protocol}//${hostname}:3003`;
-  }
-  return `${protocol}//api-${hostname}`;
-})();
+import { API_URL } from './utils/api';
+import { initAdminLocationService } from './utils/adminLocationService';
 
 const activeTrack = ref(null);
 const isPlaying = ref(false);
 const audioRef = ref(null);
 const musicVolume = ref(parseFloat(localStorage.getItem('musicVolume') ?? '0.3'));
 const isExpanded = ref(false);
+
+const isDriver = ref(!!localStorage.getItem('token'));
 
 const applyMusicVolume = () => {
   if (!audioRef.value) return;
@@ -36,7 +33,14 @@ const handleVolumeChange = (e) => {
 
 const fetchActiveTrack = async () => {
   try {
-    const res = await fetch(`${API_URL}/api/music/active`);
+    const token = localStorage.getItem('token');
+    isDriver.value = !!token;
+    const headers = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const res = await fetch(`${API_URL}/api/music/active`, { headers });
     if (res.ok) {
       const track = await res.json();
       if (!track) {
@@ -48,24 +52,34 @@ const fetchActiveTrack = async () => {
             audioRef.value.src = '';
           }
         }
-      } else if (!activeTrack.value || activeTrack.value.id !== track.id) {
-        const wasPlaying = activeTrack.value ? isPlaying.value : true;
-        activeTrack.value = track;
-        nextTick(() => {
-          if (audioRef.value) {
-            audioRef.value.src = `${API_URL}${track.audioUrl}`;
-            applyMusicVolume();
-            audioRef.value.load();
-            if (wasPlaying) {
-              isPlaying.value = true;
-              audioRef.value.play().catch(err => {
-                console.log("Autoplay blocked, waiting for interaction:", err);
-              });
-            } else {
-              isPlaying.value = false;
-            }
+      } else {
+        if (track.isSpotify) {
+          if (audioRef.value && !audioRef.value.paused) {
+            audioRef.value.pause();
           }
-        });
+          activeTrack.value = track;
+          isPlaying.value = track.isPlaying;
+        } else {
+          if (!activeTrack.value || activeTrack.value.id !== track.id || activeTrack.value.isSpotify) {
+            const wasPlaying = activeTrack.value ? isPlaying.value : true;
+            activeTrack.value = track;
+            nextTick(() => {
+              if (audioRef.value) {
+                audioRef.value.src = `${API_URL}${track.audioUrl}`;
+                applyMusicVolume();
+                audioRef.value.load();
+                if (wasPlaying) {
+                  isPlaying.value = true;
+                  audioRef.value.play().catch(err => {
+                    console.log("Autoplay blocked, waiting for interaction:", err);
+                  });
+                } else {
+                  isPlaying.value = false;
+                }
+              }
+            });
+          }
+        }
       }
     }
   } catch (err) {
@@ -73,7 +87,31 @@ const fetchActiveTrack = async () => {
   }
 };
 
-const togglePlay = () => {
+const togglePlay = async () => {
+  if (activeTrack.value && activeTrack.value.isSpotify) {
+    try {
+      const headers = {};
+      const token = localStorage.getItem('token');
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+        headers['Content-Type'] = 'application/json';
+      }
+      const action = isPlaying.value ? 'pause' : 'play';
+      const res = await fetch(`${API_URL}/api/music/toggle`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ action })
+      });
+      if (res.ok) {
+        isPlaying.value = !isPlaying.value;
+        setTimeout(fetchActiveTrack, 500);
+      }
+    } catch (err) {
+      console.error("Error toggling Spotify playback:", err);
+    }
+    return;
+  }
+
   if (!audioRef.value) return;
   if (isPlaying.value) {
     audioRef.value.pause();
@@ -87,6 +125,61 @@ const togglePlay = () => {
   }
 };
 
+const playNext = async () => {
+  try {
+    const headers = {};
+    const token = localStorage.getItem('token');
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    const res = await fetch(`${API_URL}/api/music/next`, { method: 'POST', headers });
+    if (res.ok) {
+      const nextTrack = await res.json();
+      if (activeTrack.value && nextTrack && activeTrack.value.id === nextTrack.id) {
+        // Same track! Just restart it
+        if (audioRef.value) {
+          audioRef.value.currentTime = 0;
+          audioRef.value.play().catch(err => console.log("Replay failed:", err));
+        }
+      } else {
+        await fetchActiveTrack();
+      }
+    }
+  } catch (err) {
+    console.error("Error skipping music:", err);
+  }
+};
+
+const playPrev = async () => {
+  try {
+    const headers = {};
+    const token = localStorage.getItem('token');
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    const res = await fetch(`${API_URL}/api/music/prev`, { method: 'POST', headers });
+    if (res.ok) {
+      const prevTrack = await res.json();
+      if (activeTrack.value && prevTrack && activeTrack.value.id === prevTrack.id) {
+        if (audioRef.value) {
+          audioRef.value.currentTime = 0;
+          audioRef.value.play().catch(err => console.log("Replay failed:", err));
+        }
+      } else {
+        await fetchActiveTrack();
+      }
+    }
+  } catch (err) {
+    console.error("Error backing music:", err);
+  }
+};
+
+const handleAudioEnded = () => {
+  if (activeTrack.value && activeTrack.value.autoplay) {
+    playNext();
+  }
+};
+
 const handleUserInteraction = () => {
   if (isPlaying.value && audioRef.value && audioRef.value.paused) {
     audioRef.value.play().catch(err => console.log("Bypass play failed:", err));
@@ -94,6 +187,21 @@ const handleUserInteraction = () => {
 };
 
 const showMusicWidget = ref(localStorage.getItem('showMusicWidget') !== 'false');
+
+watch(showMusicWidget, (newVal) => {
+  if (newVal) {
+    activeTrack.value = null;
+    nextTick(() => {
+      fetchActiveTrack();
+    });
+  } else {
+    isPlaying.value = false;
+    if (audioRef.value) {
+      audioRef.value.pause();
+      audioRef.value.src = '';
+    }
+  }
+});
 
 const musicX = ref(parseFloat(localStorage.getItem('appMusicX') || '0'));
 const musicY = ref(parseFloat(localStorage.getItem('appMusicY') || '0'));
@@ -295,16 +403,17 @@ onMounted(async () => {
   await nextTick();
 
   // Global hover SFX on all buttons/interactive elements
-  const selector = 'button, .sidebar-nav-item, select, .btn-xp, a, .nav-item, .tab-btn, .start-btn';
+  const hoverSelector = 'button, .sidebar-nav-item, select, .btn-xp, a, .nav-item, .tab-btn, .start-btn, .settings-row, .ranking-row, .activity-row, .toggle, .preset-item, .trophy-close, .control-btn, .premium-floating-btn, .qr-widget-btn, .music-btn-compact, .suggestion-item, .ach-card';
   document.body.addEventListener('mouseenter', (e) => {
-    if (e.target.matches && (e.target.matches(selector) || e.target.closest(selector))) {
+    if (e.target.matches && (e.target.matches(hoverSelector) || e.target.closest(hoverSelector))) {
       sfxHover();
     }
   }, true);
 
   // Global click SFX on all buttons
+  const clickSelector = 'button, .btn-xp, .sidebar-nav-item, .nav-item, .tab-btn, .start-btn, select, a, .settings-row, .ranking-row, .activity-row, .toggle, .preset-item, .trophy-close, .control-btn, .premium-floating-btn, .qr-widget-btn, .music-btn-compact, .suggestion-item, .ach-card';
   document.body.addEventListener('click', (e) => {
-    if (e.target.matches && (e.target.matches('button, .btn-xp, .sidebar-nav-item') || e.target.closest('button, .btn-xp, .sidebar-nav-item'))) {
+    if (e.target.matches && (e.target.matches(clickSelector) || e.target.closest(clickSelector))) {
       sfxClick();
     }
   }, true);
@@ -319,6 +428,7 @@ onMounted(async () => {
   window.addEventListener('volume-change', handleVolumeChange);
   window.addEventListener('music-widget-toggle', handleMusicToggleEvent);
   window.addEventListener('resize', clampToScreen);
+  window.addEventListener('spotify-status-change', fetchActiveTrack);
   
   // Watch if expanding pushes it off-screen, pull it back in
   watch(isExpanded, () => {
@@ -330,6 +440,9 @@ onMounted(async () => {
   
   // Run initial clamp in case it was dragged out or screen loaded small
   clampToScreen();
+
+  // Initialize admin location background updates
+  initAdminLocationService();
 });
 
 onUnmounted(() => {
@@ -340,6 +453,7 @@ onUnmounted(() => {
   window.removeEventListener('volume-change', handleVolumeChange);
   window.removeEventListener('music-widget-toggle', handleMusicToggleEvent);
   window.removeEventListener('resize', clampToScreen);
+  window.removeEventListener('spotify-status-change', fetchActiveTrack);
 });
 </script>
 
@@ -360,27 +474,49 @@ onUnmounted(() => {
         @touchstart="onMusicDragStart"
         @click="handleWidgetClick"
       >
-        <audio ref="audioRef" loop></audio>
+        <audio ref="audioRef" :loop="!activeTrack?.autoplay" @ended="handleAudioEnded"></audio>
         <div class="widget-content">
           <div 
             class="cover-art" 
-            :class="{ rotating: isPlaying }"
-            :style="activeTrack.coverUrl ? { backgroundImage: `url(${API_URL}${activeTrack.coverUrl})` } : {}"
+            :class="{ rotating: isPlaying && !activeTrack.isSpotify }"
+            :style="activeTrack.coverUrl ? { backgroundImage: `url(${activeTrack.coverUrl.startsWith('http') ? activeTrack.coverUrl : API_URL + activeTrack.coverUrl})` } : {}"
           >
             <div v-if="!activeTrack.coverUrl" class="cover-fallback">🎵</div>
           </div>
-          <div class="track-info">
-            <div class="track-status">{{ isPlaying ? 'TOCANDO' : 'PAUSADO' }}</div>
-            <div class="track-title" :title="activeTrack.title">{{ activeTrack.title }}</div>
+          <div class="track-info" style="max-width: 120px; overflow: hidden;">
+            <div class="track-status">
+              <span v-if="activeTrack.isSpotify" style="color: #1db954; font-weight: bold; display: flex; align-items: center; gap: 4px; font-size: 9px;">
+                SPOTIFY 🟢 {{ isPlaying ? 'TOCANDO' : 'PAUSADO' }}
+              </span>
+              <span v-else>{{ isPlaying ? 'TOCANDO' : 'PAUSADO' }}</span>
+            </div>
+            <div class="track-title" :title="activeTrack.title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: bold;">
+              {{ activeTrack.title }}
+            </div>
+            <div v-if="activeTrack.artist" style="font-size: 9px; opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px;" :title="activeTrack.artist">
+              {{ activeTrack.artist }}
+            </div>
           </div>
-          <button class="control-btn" @click.stop="togglePlay" :title="isPlaying ? 'Pausar' : 'Tocar'">
-            <svg v-if="isPlaying" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-            </svg>
-            <svg v-else viewBox="0 0 24 24" fill="currentColor">
-              <path d="M8 5v14l11-7z"/>
-            </svg>
-          </button>
+          <div v-if="isDriver" class="control-buttons-group" style="display: flex; align-items: center; gap: 6px;">
+            <button v-if="isExpanded" class="control-btn mini-control-btn" @click.stop="playPrev" title="Voltar Música" style="width: 20px; height: 20px; padding: 0; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.15); border-radius: 50%;">
+              <svg viewBox="0 0 24 24" fill="currentColor" style="width: 10px; height: 10px; pointer-events: none;">
+                <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
+              </svg>
+            </button>
+            <button class="control-btn" @click.stop="togglePlay" :title="isPlaying ? 'Pausar' : 'Tocar'">
+              <svg v-if="isPlaying" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+              </svg>
+              <svg v-else viewBox="0 0 24 24" fill="currentColor">
+                <path d="M8 5v14l11-7z"/>
+              </svg>
+            </button>
+            <button v-if="isExpanded" class="control-btn mini-control-btn" @click.stop="playNext" title="Próxima Música" style="width: 20px; height: 20px; padding: 0; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.15); border-radius: 50%;">
+              <svg viewBox="0 0 24 24" fill="currentColor" style="width: 10px; height: 10px; pointer-events: none;">
+                <path d="M6 18l8.5-6L6 6zm9-12h2v12h-2z"/>
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
     </transition>

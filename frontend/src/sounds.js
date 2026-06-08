@@ -5,7 +5,6 @@
 let audioCtx = null;
 export function setSfxVolume(vol) {
   const parsed = parseFloat(vol);
-  console.log('[sounds.js] setSfxVolume called with:', parsed);
   localStorage.setItem('sfxVolumeMultiplier', parsed.toString());
 }
 
@@ -107,27 +106,8 @@ export function sfxDelete() {
   playTone({ freq: 250, type: 'sawtooth', duration: 0.15, volume: 0.06, delay: 0.16 });
 }
 
-// ─── Auto-attach hover sounds to buttons ─────────────────────────────────
-// Call this once after mount to add hover SFX to all interactive elements.
-
-let hoverListenersAttached = false;
-
-export function attachHoverSounds(rootEl) {
-  if (hoverListenersAttached) return;
-  hoverListenersAttached = true;
-
-  const selector = 'button, .sidebar-nav-item, select, .btn-xp';
-
-  rootEl.addEventListener('mouseenter', (e) => {
-    if (e.target.matches(selector) || e.target.closest(selector)) {
-      sfxHover();
-    }
-  }, true);
-}
-
 if (typeof window !== 'undefined') {
   window.addEventListener('volume-change', (e) => {
-    console.log('[sounds.js] Received volume-change event:', e.detail);
     if (e.detail && e.detail.type === 'sfx') {
       setSfxVolume(e.detail.value);
     }

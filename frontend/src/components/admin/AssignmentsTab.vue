@@ -1,5 +1,4 @@
 <script setup>
-import { defineProps, defineEmits } from 'vue';
 
 const props = defineProps({
   users: {
@@ -22,7 +21,9 @@ const props = defineProps({
 
 const emit = defineEmits([
   'assign-achievement',
-  'revoke-achievement'
+  'revoke-achievement',
+  'update:userId',
+  'update:achievementId'
 ]);
 </script>
 
@@ -42,7 +43,7 @@ const emit = defineEmits([
         <form @submit.prevent="emit('assign-achievement')" class="xp-grid-form">
           <div class="input-group">
             <label>Selecionar Usuário:</label>
-            <select v-model="assignmentForm.userId" required>
+            <select :value="assignmentForm.userId" @change="emit('update:userId', $event.target.value)" required>
               <option value="" disabled>Escolha um usuário</option>
               <option v-for="u in users" :key="u.id" :value="u.id">
                 {{ u.username }} (ID: {{ u.id }})
@@ -51,7 +52,7 @@ const emit = defineEmits([
           </div>
           <div class="input-group">
             <label>Selecionar Conquista:</label>
-            <select v-model="assignmentForm.achievementId" required>
+            <select :value="assignmentForm.achievementId" @change="emit('update:achievementId', $event.target.value)" required>
               <option value="" disabled>Escolha uma conquista</option>
               <option v-for="a in achievements" :key="a.id" :value="a.id">
                 {{ a.emoji }} {{ a.title }} ({{ a.key }})

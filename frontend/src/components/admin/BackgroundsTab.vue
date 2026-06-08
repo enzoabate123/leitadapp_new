@@ -1,5 +1,4 @@
 <script setup>
-import { defineProps, defineEmits } from 'vue';
 
 const props = defineProps({
   backgrounds: {
@@ -55,6 +54,7 @@ const emit = defineEmits([
               <a :href="bg.url" target="_blank" style="color: #003399;">{{ bg.url }}</a>
             </td>
             <td>
+              <button @click="emit('open-background-modal', 'update', bg)" class="btn-xp blue-btn" style="padding: 4px 8px; font-size:11px; margin-right: 5px;">Editar ✏️</button>
               <button @click="emit('delete-background', bg.id)" class="btn-xp red-btn" style="padding: 4px 8px; font-size:11px;">Excluir 🗑️</button>
             </td>
           </tr>

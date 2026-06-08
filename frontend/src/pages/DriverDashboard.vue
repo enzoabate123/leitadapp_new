@@ -2,6 +2,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { io } from 'socket.io-client';
 import L from 'leaflet';
+import { adminLocation, adminSpeed, triggerAdminTrackingCheck } from '../utils/adminLocationService';
 import { sfxSuccess, sfxError, sfxNavigate, sfxModalOpen, sfxModalClose } from '../sounds';
 
 import LoginScreen from '../components/dashboard/LoginScreen.vue';
@@ -13,13 +14,8 @@ import RankingTab from '../components/dashboard/RankingTab.vue';
 import SettingsTab from '../components/dashboard/SettingsTab.vue';
 
 // Autenticação e API
-const API_URL = (() => {
-  const { hostname, protocol } = window.location;
-  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.')) {
-    return `${protocol}//${hostname}:3003`;
-  }
-  return `${protocol}//api-${hostname}`;
-})();
+import { API_URL } from '../utils/api';
+import { safeParse } from '../utils/parse';
 
 function getFullUrl(url) {
   if (!url) return '';
@@ -84,21 +80,24 @@ async function fetchMe() {
     bannerUrl.value = data.bannerUrl || '';
     bannerPositionY.value = data.bannerPositionY || '50%';
     profileTextColor.value = data.profileTextColor || '#ffffff';
-    try {
-      customTags.value = typeof data.customTags === 'string' ? JSON.parse(data.customTags || '[]') : (data.customTags || []);
-    } catch (_) {
-      customTags.value = [];
-    }
-    try {
-      highlightedAchievements.value = typeof data.highlightedAchievements === 'string' ? JSON.parse(data.highlightedAchievements || '[]') : (data.highlightedAchievements || []);
-    } catch (_) {
-      highlightedAchievements.value = [];
-    }
+    customTags.value = safeParse(data.customTags);
+    highlightedAchievements.value = safeParse(data.highlightedAchievements);
     if (data.settings) {
       pushNotifications.value = data.settings.pushNotifications;
-      xpAlerts.value = data.settings.xpAlerts;
+      pointsAlerts.value = data.settings.pointsAlerts;
       socialRanking.value = data.settings.socialRanking;
       publicProfile.value = data.settings.publicProfile;
+      spotifyConnected.value = !!data.settings.spotifyConnected;
+      
+      if (data.settings.bgType) {
+        appBgType.value = data.settings.bgType;
+        localStorage.setItem('app-background', data.settings.bgType);
+      }
+      if (data.settings.customBgUrl !== undefined) {
+        appCustomBgUrl.value = data.settings.customBgUrl;
+        localStorage.setItem('app-background-custom', data.settings.customBgUrl);
+      }
+      applyBackground(appBgType.value, appCustomBgUrl.value);
     }
     return true;
   } catch (e) {
@@ -137,6 +136,8 @@ async function handleAuth(eventData) {
   }
 }
 
+let previousUserRank = null;
+
 async function fetchRanking() {
   try {
     const data = await apiFetch('/api/ranking');
@@ -146,11 +147,28 @@ async function fetchRanking() {
       name: d.username, 
       pts: d.totalPoints,
       avatarUrl: d.avatarUrl,
-      customTags: typeof d.customTags === 'string' && d.customTags.length > 0 ? JSON.parse(d.customTags) : [],
+      customTags: safeParse(d.customTags),
       tripsCount: d.tripsCount,
       totalDistance: d.totalDistance,
       active: d.userId === userId.value 
     }));
+
+    // Detect rank changes for the logged in user
+    const userRankObj = rankingList.value.find(r => r.userId === userId.value);
+    if (userRankObj) {
+      const currentRank = userRankObj.pos;
+      if (previousUserRank !== null && previousUserRank !== currentRank) {
+        if (socialRanking.value) {
+          const improved = previousUserRank > currentRank; // e.g. 5º to 3º
+          if (improved) {
+            showToast(`📈 Subiu no Ranking! Você agora está em ${currentRank}º lugar!`, 'success');
+          } else {
+            showToast(`📉 Caiu no Ranking! Você agora está em ${currentRank}º lugar!`, 'info');
+          }
+        }
+      }
+      previousUserRank = currentRank;
+    }
   } catch (e) {
     console.error(e);
   }
@@ -166,12 +184,130 @@ async function fetchAchievements() {
   }
 }
 
+async function fetchAllUsers() {
+  try {
+    const data = await apiFetch('/api/passengers');
+    allUsers.value = data;
+  } catch (e) {
+    console.error('Falha ao buscar usuários:', e);
+  }
+}
 
-// Simulação de Viagem
+
+// Simulação e Tracking de Viagem
 const tripActive = ref(false);
 const tripStartTime = ref(0);
 const tripDistance = ref(0);
 let tripInterval = null;
+let geolocationWatchId = null;
+
+function getCurrentLocation() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error('Geolocalização não suportada neste navegador'));
+      return;
+    }
+    // Tenta obter com alta precisão primeiro
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve(pos),
+      (err) => {
+        console.warn('Alta precisão falhou, tentando precisão padrão (Wi-Fi/Células)...', err);
+        // Fallback para precisão padrão (evita erros em iPads Wi-Fi ou locais fechados)
+        navigator.geolocation.getCurrentPosition(
+          (posFallback) => resolve(posFallback),
+          (errFallback) => reject(err),
+          { enableHighAccuracy: false, timeout: 10000, maximumAge: 3000 }
+        );
+      },
+      { enableHighAccuracy: true, timeout: 4000 }
+    );
+  });
+}
+
+function startTracking(useDeviceLocation) {
+  if (tripInterval) clearInterval(tripInterval);
+  if (geolocationWatchId != null) {
+    navigator.geolocation.clearWatch(geolocationWatchId);
+    geolocationWatchId = null;
+  }
+  
+  if (useDeviceLocation && navigator.geolocation && userRole.value !== 'admin') {
+    geolocationWatchId = navigator.geolocation.watchPosition(
+      (position) => {
+        const lat = position.coords.latitude;
+        const lon = position.coords.longitude;
+        const speedMs = position.coords.speed;
+        if (speedMs != null) {
+          speed.value = Math.round(speedMs * 3.6);
+          rpm.value = Math.round(1500 + speed.value * 20);
+        }
+        if (activeTrip.value) {
+          activeTrip.value.currentLat = lat;
+          activeTrip.value.currentLon = lon;
+        }
+        if (socket && socket.connected) {
+          socket.emit('update-trip', {
+            distanceKm: Number(tripDistance.value.toFixed(2)),
+            speed: speed.value,
+            rpm: rpm.value,
+            battery: battery.value,
+            currentLat: lat,
+            currentLon: lon
+          });
+        }
+      },
+      (err) => {
+        console.error('Erro de tracking de geolocalização:', err);
+      },
+      { enableHighAccuracy: false, maximumAge: 3000, timeout: 10000 }
+    );
+  }
+
+  tripInterval = setInterval(() => {
+    tripDistance.value += (speed.value / 3600);
+    if (socket && socket.connected) {
+      socket.emit('update-trip', {
+        distanceKm: Number(tripDistance.value.toFixed(2)),
+        speed: speed.value,
+        rpm: rpm.value,
+        battery: battery.value,
+        currentLat: activeTrip.value ? activeTrip.value.currentLat : null,
+        currentLon: activeTrip.value ? activeTrip.value.currentLon : null
+      });
+    }
+  }, 1000);
+}
+
+function stopTracking() {
+  if (tripInterval) {
+    clearInterval(tripInterval);
+    tripInterval = null;
+  }
+  if (geolocationWatchId != null) {
+    navigator.geolocation.clearWatch(geolocationWatchId);
+    geolocationWatchId = null;
+  }
+}
+
+// Watch global admin location updates from the service and apply locally
+watch(adminLocation, (newLoc) => {
+  if (newLoc && newLoc.lat != null && newLoc.lon != null) {
+    carLocation.value = newLoc;
+    
+    // Update active trip current location if we are in a trip
+    if (tripActive.value && activeTrip.value) {
+      activeTrip.value.currentLat = newLoc.lat;
+      activeTrip.value.currentLon = newLoc.lon;
+    }
+  }
+}, { deep: true });
+
+watch(adminSpeed, (newSpeed) => {
+  if (tripActive.value && activeTrip.value) {
+    speed.value = newSpeed;
+    rpm.value = Math.round(1500 + newSpeed * 20);
+  }
+});
 
 function toggleTrip() {
   if (tripActive.value) {
@@ -190,27 +326,21 @@ function startTrip() {
   tripActive.value = true;
   tripStartTime.value = Date.now();
   tripDistance.value = 0;
-  if (tripInterval) clearInterval(tripInterval);
-  tripInterval = setInterval(() => {
-    tripDistance.value += (speed.value / 3600); // speed is km/h, increment per second
-    if (socket && socket.connected) {
-      socket.emit('update-trip', {
-        distanceKm: Number(tripDistance.value.toFixed(2)),
-        speed: speed.value,
-        rpm: rpm.value,
-        battery: battery.value
-      });
-    }
-  }, 1000);
+  startTracking(false);
 }
 
 async function endTrip() {
   tripActive.value = false;
-  clearInterval(tripInterval);
+  stopTracking();
   const durationMs = Date.now() - tripStartTime.value;
   const durationMin = Math.max(1, Math.round(durationMs / 60000));
   const durationSec = Math.round(durationMs / 1000);
-  const distKm = Number(tripDistance.value.toFixed(2));
+  
+  // Use OSRM calculated distance if available and larger than GPS recorded distance
+  let distKm = Number(tripDistance.value.toFixed(2));
+  if (activeTrip.value && activeTrip.value.routeDistanceKm && activeTrip.value.routeDistanceKm > 0) {
+    distKm = Math.max(distKm, activeTrip.value.routeDistanceKm);
+  }
   
   const tripPayload = {
     distanceKm: distKm,
@@ -218,6 +348,7 @@ async function endTrip() {
     durationSec,
     avgSpeed: speed.value,
     passengerCount: passengers.value.length,
+    passengers: passengers.value.map(p => p.name),
     startLocation: startTripForm.value.departure || (activeTrip.value ? activeTrip.value.departure : null),
     endLocation: startTripForm.value.destination || (activeTrip.value ? activeTrip.value.destination : null),
     startLat: activeTrip.value ? activeTrip.value.startLat : null,
@@ -243,7 +374,9 @@ async function endTrip() {
       body: JSON.stringify(tripPayload)
     });
     
-    showToast(`Viagem finalizada! +${data.xpEarned} XP`);
+    if (pointsAlerts.value) {
+      showToast(`Viagem finalizada! +${data.pointsGenerated} Pontos`);
+    }
     
     if (socket && socket.connected) {
       socket.emit('end-trip');
@@ -276,16 +409,8 @@ async function openPublicProfile(uid) {
     const data = await apiFetch(`/api/users/${uid}/profile`);
     if (data.error) throw new Error(data.error);
     publicProfileData.value = data;
-    if (publicProfileData.value.customTags) {
-      publicProfileData.value.customTags = typeof data.customTags === 'string' ? JSON.parse(data.customTags) : data.customTags;
-    }
-    if (publicProfileData.value.highlightedAchievements) {
-      publicProfileData.value.highlightedAchievements = typeof data.highlightedAchievements === 'string'
-        ? JSON.parse(data.highlightedAchievements || '[]')
-        : (data.highlightedAchievements || []);
-    } else {
-      publicProfileData.value.highlightedAchievements = [];
-    }
+    publicProfileData.value.customTags = safeParse(data.customTags);
+    publicProfileData.value.highlightedAchievements = safeParse(data.highlightedAchievements);
   } catch (err) {
     showToast('Erro ao carregar perfil');
     showPublicProfile.value = false;
@@ -358,11 +483,7 @@ async function renderPublicProfileMap(longestTrip) {
 
   let pathPoints = [startCoords, endCoords];
   if (routeCoords) {
-    try {
-      pathPoints = typeof routeCoords === 'string' ? JSON.parse(routeCoords) : routeCoords;
-    } catch (e) {
-      console.error('Error parsing routeCoords in public profile map:', e);
-    }
+    pathPoints = safeParse(routeCoords, [startCoords, endCoords]);
   }
 
   publicProfileRouteLine = L.polyline(pathPoints, {
@@ -386,6 +507,8 @@ watch(() => publicProfileData.value, async (newData) => {
   }
 }, { deep: true });
 
+
+
 // Estado da Conexão WebSocket
 const socketStatus = ref('Conectando...');
 const lastPing = ref('-');
@@ -396,7 +519,6 @@ const userTag = ref('0000');
 const userId = ref('');
 const email = ref('');
 const points = ref(0);
-const nextLevelPoints = ref(1000);
 const level = ref(1);
 
 // Estatísticas do Usuário
@@ -411,52 +533,49 @@ const totalAchievements = ref(15);
 const achievementsList = ref([]);
 
 // Telemetria do Veículo
-const speed = ref(85);
-const rpm = ref(2800);
-const battery = ref(92);
+const speed = ref(0);
+const rpm = ref(0);
+const battery = ref(100);
 
 // Dados do Tocador de Música (Admin sets this)
 const currentSong = ref('Midnight City');
 const currentArtist = ref('M83');
-const isPlaying = ref(true);
+const isPlaying = ref(false);
 
 // Passageiros
 const passengers = ref([
-  { name: 'Marina', role: 'Co-piloto', status: '⚡ 120 XP' },
+  { name: 'Marina', role: 'Co-piloto', status: '⚡ 120 Pontos' },
   { name: 'Enzo', role: 'Traseiro Esq.', status: '💤 Silencioso' }
 ]);
-const showAddPassengerForm = ref(false);
-const newPassengerName = ref('');
-const newPassengerRole = ref('');
-
-function addPassenger() {
-  if (newPassengerName.value.trim() && newPassengerRole.value.trim()) {
-    passengers.value.push({
-      name: newPassengerName.value.trim(),
-      role: newPassengerRole.value.trim(),
-      status: '⚡ 0 XP'
-    });
-    newPassengerName.value = '';
-    newPassengerRole.value = '';
-    showAddPassengerForm.value = false;
-  }
-}
-
-function removePassenger(index) {
-  passengers.value.splice(index, 1);
-}
 
 // Ranking
 const rankingList = ref([]);
+const allUsers = ref([]);
 const activeTrip = ref(null);
 const isSyncingOffline = ref(false);
 
 const activeSuggestions = ref({ field: null, index: null, list: [] });
 let searchTimeout = null;
 
+const newModalPassenger = ref({ name: '', role: '' });
+
+const carLocation = ref({ lat: null, lon: null });
+
 const availableUsersForPassengers = computed(() => {
-  if (!rankingList.value) return [];
-  return rankingList.value.filter(u => u.name !== username.value);
+  const list = allUsers.value.length > 0
+    ? allUsers.value
+    : rankingList.value.map(r => ({ id: r.userId, username: r.name, avatarUrl: r.avatarUrl }));
+
+  const query = (newModalPassenger.value.name || '').toLowerCase().trim();
+
+  return list
+    .filter(u => u.username !== username.value)
+    .filter(u => !query || u.username.toLowerCase().includes(query))
+    .map(u => ({
+      userId: u.id,
+      name: u.username,
+      avatarUrl: u.avatarUrl
+    }));
 });
 
 const showUserSelectMenu = ref(false);
@@ -625,11 +744,13 @@ const startTripForm = ref({
   destination: '',
   destinationCoords: null,
   stops: [], // array of { address: '', coords: null }
-  passengers: []
+  passengers: [],
+  useDeviceLocation: false
 });
-const newModalPassenger = ref({ name: '', role: '' });
 const savedPresets = ref([]);
 const newPresetName = ref('');
+
+
 
 function loadPresets() {
   const data = localStorage.getItem('commute-presets');
@@ -648,7 +769,7 @@ function loadPresets() {
         destination: 'Sede Commute Quest',
         stops: [],
         passengers: [
-          { name: 'Marina', role: 'Co-piloto 🧭', status: '⚡ 120 XP' },
+          { name: 'Marina', role: 'Co-piloto 🧭', status: '⚡ 120 Pontos' },
           { name: 'Enzo', role: 'Traseiro Esq. 🚗', status: '💤 Silencioso' }
         ]
       }
@@ -697,7 +818,7 @@ function addModalPassenger() {
     startTripForm.value.passengers.push({
       name: newModalPassenger.value.name.trim(),
       role: newModalPassenger.value.role.trim(),
-      status: '⚡ 0 XP'
+      status: '⚡ 0 Pontos'
     });
     newModalPassenger.value.name = '';
     newModalPassenger.value.role = '';
@@ -721,7 +842,7 @@ function openStartTripModal() {
   showStartTripModal.value = true;
 }
 
-async function confirmStartTrip() {
+function validateStartTripForm() {
   // Auto-add any passenger currently selected but not added via "+"
   if (newModalPassenger.value.name && newModalPassenger.value.role) {
     const nameExists = startTripForm.value.passengers.some(p => p.name === newModalPassenger.value.name);
@@ -729,27 +850,65 @@ async function confirmStartTrip() {
       startTripForm.value.passengers.push({
         name: newModalPassenger.value.name,
         role: newModalPassenger.value.role,
-        status: '⚡ 0 XP'
+        status: '⚡ 0 Pontos'
       });
     }
     newModalPassenger.value = { name: '', role: '' };
   }
 
-  if (!startTripForm.value.departure.trim() || !startTripForm.value.destination.trim()) {
-    showToast('Informe a partida e o destino');
-    return;
+  if (!startTripForm.value.useDeviceLocation && navigator.geolocation) {
+    const wantGps = confirm("Deseja utilizar a geolocalização em tempo real deste dispositivo para rastreamento da corrida no mapa?");
+    if (wantGps) {
+      startTripForm.value.useDeviceLocation = true;
+    }
   }
 
-  isGeocoding.value = true;
-  showToast('Geocodificando endereços e calculando rota...');
+  // Validação dos campos com base no modo de geolocalização
+  if (startTripForm.value.useDeviceLocation) {
+    if (!startTripForm.value.destination || !startTripForm.value.destination.trim()) {
+      showToast('Informe o destino');
+      return false;
+    }
+  } else {
+    if (!startTripForm.value.departure || !startTripForm.value.departure.trim() || !startTripForm.value.destination || !startTripForm.value.destination.trim()) {
+      showToast('Informe a partida e o destino');
+      return false;
+    }
+  }
+  return true;
+}
 
+async function resolveTripCoordinates() {
   let startLat = -23.55052;
   let startLon = -46.633308;
   let endLat = -23.55552;
   let endLon = -46.638308;
 
   // Resolve departure coords
-  if (startTripForm.value.departureCoords) {
+  if (startTripForm.value.useDeviceLocation) {
+    try {
+      const pos = await getCurrentLocation();
+      startLat = pos.coords.latitude;
+      startLon = pos.coords.longitude;
+      startTripForm.value.departureCoords = { lat: startLat, lon: startLon };
+    } catch (err) {
+      let extra = '';
+      if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+        extra = ' (O iOS/Safari exige conexão HTTPS segura para liberar o GPS em redes locais)';
+      }
+      showToast('Aviso: GPS não disponível' + extra + '. Usando geocodificação.');
+      if (startTripForm.value.departureCoords) {
+        startLat = startTripForm.value.departureCoords.lat;
+        startLon = startTripForm.value.departureCoords.lon;
+      } else {
+        const startLoc = await geocodeAddress(startTripForm.value.departure);
+        if (startLoc) {
+          startLat = startLoc.lat;
+          startLon = startLoc.lon;
+        }
+      }
+    }
+  } else if (startTripForm.value.departureCoords) {
     startLat = startTripForm.value.departureCoords.lat;
     startLon = startTripForm.value.departureCoords.lon;
   } else {
@@ -799,6 +958,23 @@ async function confirmStartTrip() {
   
   coordsList.push([endLat, endLon]);
 
+  return {
+    startLat,
+    startLon,
+    endLat,
+    endLon,
+    coordsList
+  };
+}
+
+async function confirmStartTrip() {
+  if (!validateStartTripForm()) return;
+
+  isGeocoding.value = true;
+  showToast('Geocodificando endereços e calculando rota...');
+
+  const { startLat, startLon, endLat, endLon, coordsList } = await resolveTripCoordinates();
+
   const routeData = await fetchOSRMRoute(coordsList);
   isGeocoding.value = false;
   
@@ -820,7 +996,10 @@ async function confirmStartTrip() {
     etaMinutes: routeData.etaMinutes,
     routeDistanceKm: routeData.routeDistanceKm,
     routeSteps: routeData.routeSteps,
-    startTime: tripStartTimeValue
+    startTime: tripStartTimeValue,
+    useDeviceLocation: startTripForm.value.useDeviceLocation,
+    currentLat: startLat,
+    currentLon: startLon
   };
 
   if (socket && socket.connected) {
@@ -837,7 +1016,8 @@ async function confirmStartTrip() {
       etaMinutes: routeData.etaMinutes,
       routeDistanceKm: routeData.routeDistanceKm,
       routeSteps: routeData.routeSteps,
-      startTime: tripStartTimeValue
+      startTime: tripStartTimeValue,
+      useDeviceLocation: startTripForm.value.useDeviceLocation
     });
   }
   
@@ -845,19 +1025,7 @@ async function confirmStartTrip() {
   tripStartTime.value = tripStartTimeValue;
   tripDistance.value = 0;
   
-  if (tripInterval) clearInterval(tripInterval);
-  tripInterval = setInterval(() => {
-    tripDistance.value += (speed.value / 3600);
-    
-    if (socket && socket.connected) {
-      socket.emit('update-trip', {
-        distanceKm: Number(tripDistance.value.toFixed(2)),
-        speed: speed.value,
-        rpm: rpm.value,
-        battery: battery.value
-      });
-    }
-  }, 1000);
+  startTracking(startTripForm.value.useDeviceLocation);
   
   showStartTripModal.value = false;
   showQrCodeModal.value = true;
@@ -878,66 +1046,40 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 
 const isGeocoding = ref(false);
 
-async function geocodeAddress(address) {
-  try {
-    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(address)}`;
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent': 'CommuteQuestDashboard/1.0'
+watch(() => startTripForm.value.useDeviceLocation, async (newVal) => {
+  if (newVal) {
+    if (isGeocoding.value || tripActive.value) return; // Skip if starting or already in a trip
+    try {
+      showToast('Obtendo localização atual do dispositivo...');
+      const pos = await getCurrentLocation();
+      const lat = pos.coords.latitude;
+      const lon = pos.coords.longitude;
+      startTripForm.value.departureCoords = { lat, lon };
+      startTripForm.value.departure = `Localização Atual (${lat.toFixed(5)}, ${lon.toFixed(5)})`;
+      showToast('Localização obtida com sucesso!');
+    } catch (err) {
+      let msg = err.message;
+      if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+        msg = 'O iOS/Safari exige conexão HTTPS segura para liberar o GPS em redes locais. ' + err.message;
       }
-    });
-    if (!res.ok) throw new Error('Geocoding failed');
-    const data = await res.json();
-    if (data && data.length > 0) {
-      return {
-        lat: parseFloat(data[0].lat),
-        lon: parseFloat(data[0].lon)
-      };
+      showToast('Não foi possível obter a localização do dispositivo: ' + msg);
+      startTripForm.value.useDeviceLocation = false;
     }
-  } catch (err) {
-    console.error('Geocoding error:', err);
+  } else {
+    if (startTripForm.value.departure && startTripForm.value.departure.startsWith('Localização Atual')) {
+      startTripForm.value.departure = '';
+      startTripForm.value.departureCoords = null;
+    }
   }
-  return null;
-}
+});
+
+import { geocodeAddress, fetchOSRMRoute as fetchRouteShared } from '../utils/routing';
 
 async function fetchOSRMRoute(coordsList) {
-  try {
-    const formattedPoints = coordsList.map(pt => `${pt[1]},${pt[0]}`).join(';');
-    const url = `https://router.project-osrm.org/route/v1/driving/${formattedPoints}?overview=full&geometries=geojson&steps=true`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('OSRM request failed');
-    const data = await res.json();
-    if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
-      const route = data.routes[0];
-      const routeCoords = route.geometry.coordinates.map(coord => [coord[1], coord[0]]);
-      const etaMinutes = Math.round(route.duration / 60);
-      const routeDistanceKm = Number((route.distance / 1000).toFixed(2));
-      
-      const steps = [];
-      if (route.legs && route.legs.length > 0) {
-        for (const leg of route.legs) {
-          if (leg.steps) {
-            for (const step of leg.steps) {
-              steps.push({
-                name: step.name || '',
-                distanceKm: step.distance / 1000
-              });
-            }
-          }
-        }
-      }
-      
-      return {
-        routeCoords,
-        etaMinutes,
-        routeDistanceKm,
-        routeSteps: steps
-      };
-    }
-  } catch (err) {
-    console.error('OSRM Routing error, falling back to straight line:', err);
-  }
-  
+  const data = await fetchRouteShared(coordsList, true);
+  if (data) return data;
+
+  // Fallback straight line
   let totalDist = 0;
   const routeCoords = [];
   for (let i = 0; i < coordsList.length - 1; i++) {
@@ -1001,6 +1143,7 @@ async function syncOfflineTrips() {
         durationSec: trip.durationSec,
         avgSpeed: trip.avgSpeed,
         passengerCount: trip.passengerCount,
+        passengers: trip.passengers || [],
         startLocation: trip.startLocation,
         endLocation: trip.endLocation
       };
@@ -1048,33 +1191,34 @@ function initDashboard() {
   });
 
   socket.on('achievement-unlocked', (ach) => {
-    showToast(`🏆 Conquista desbloqueada: ${ach.title} ${ach.emoji}`);
+    if (pushNotifications.value) {
+      showToast(`🏆 Conquista desbloqueada: ${ach.title} ${ach.emoji}`);
+    }
     fetchMe();
   });
 
   socket.on('current-trip-state', (data) => {
-    activeTrip.value = data;
-    tripActive.value = true;
-    tripDistance.value = data.distanceKm;
-    speed.value = data.speed;
-    rpm.value = data.rpm;
-    battery.value = data.battery;
-    passengers.value = data.passengers || [];
-    
-    if (data.driverId === userId.value) {
-      tripStartTime.value = data.startTime || (Date.now() - (data.distanceKm / (data.speed / 3600)) * 1000);
-      if (tripInterval) clearInterval(tripInterval);
-      tripInterval = setInterval(() => {
-        tripDistance.value += (speed.value / 3600);
-        if (socket && socket.connected) {
-          socket.emit('update-trip', {
-            distanceKm: Number(tripDistance.value.toFixed(2)),
-            speed: speed.value,
-            rpm: rpm.value,
-            battery: battery.value
-          });
-        }
-      }, 1000);
+    if (data) {
+      activeTrip.value = data;
+      tripActive.value = true;
+      tripDistance.value = data.distanceKm;
+      speed.value = data.speed;
+      rpm.value = data.rpm;
+      battery.value = data.battery;
+      passengers.value = data.passengers || [];
+      
+      if (data.driverId === userId.value) {
+        tripStartTime.value = data.startTime || (Date.now() - (data.distanceKm / (data.speed / 3600)) * 1000);
+        startTracking(data.useDeviceLocation);
+      }
+    } else {
+      activeTrip.value = null;
+      tripActive.value = false;
+      tripDistance.value = 0;
+      speed.value = 0;
+      rpm.value = 1000;
+      battery.value = 100;
+      passengers.value = [];
     }
   });
 
@@ -1124,9 +1268,21 @@ function initDashboard() {
     isPlaying.value = data.isPlaying;
   });
 
+  socket.on('car-location-updated', (data) => {
+    if (data && data.lat != null && data.lon != null) {
+      carLocation.value = data;
+    }
+  });
+
+  if (userRole.value === 'admin') {
+    triggerAdminTrackingCheck();
+  }
+
   fetchRanking();
   fetchAchievements();
+  fetchAllUsers();
   fetchBackgrounds();
+  fetchUserRequests();
 
   window.addEventListener('online', syncOfflineTrips);
   syncOfflineTrips();
@@ -1152,16 +1308,39 @@ function togglePlay() {
 
 // Configurações
 const pushNotifications = ref(true);
-const xpAlerts = ref(true);
+const pointsAlerts = ref(true);
 const socialRanking = ref(false);
 const publicProfile = ref(true);
+const spotifyConnected = ref(false);
 const showMusicWidget = ref(localStorage.getItem('showMusicWidget') !== 'false');
 
 const sfxVolume = ref(parseFloat(localStorage.getItem('sfxVolumeMultiplier') ?? '0.5'));
 const musicVolume = ref(parseFloat(localStorage.getItem('musicVolume') ?? '0.3'));
 
+function connectSpotify() {
+  const frontendUrl = window.location.origin;
+  window.location.href = `${API_URL}/api/spotify/login?token=${token.value}&frontend_url=${encodeURIComponent(frontendUrl)}`;
+}
+
+async function disconnectSpotify() {
+  try {
+    const data = await apiFetch('/api/spotify/disconnect', {
+      method: 'POST'
+    });
+    if (data.error) {
+      showToast(data.error);
+    } else {
+      showToast('Spotify desconectado com sucesso!');
+      spotifyConnected.value = false;
+      window.dispatchEvent(new CustomEvent('spotify-status-change'));
+    }
+  } catch (e) {
+    console.error(e);
+    showToast('Erro ao desconectar o Spotify');
+  }
+}
+
 function updateVolume(type) {
-  console.log('[DriverDashboard] updateVolume called for type:', type, 'sfxVolume:', sfxVolume.value, 'musicVolume:', musicVolume.value);
   if (type === 'sfx') {
     localStorage.setItem('sfxVolumeMultiplier', sfxVolume.value.toString());
     window.dispatchEvent(new CustomEvent('volume-change', { detail: { type: 'sfx', value: sfxVolume.value } }));
@@ -1180,7 +1359,7 @@ async function toggleSetting(key) {
   }
   let val = false;
   if (key === 'pushNotifications') { pushNotifications.value = !pushNotifications.value; val = pushNotifications.value; }
-  if (key === 'xpAlerts') { xpAlerts.value = !xpAlerts.value; val = xpAlerts.value; }
+  if (key === 'pointsAlerts') { pointsAlerts.value = !pointsAlerts.value; val = pointsAlerts.value; }
   if (key === 'socialRanking') { socialRanking.value = !socialRanking.value; val = socialRanking.value; }
   if (key === 'publicProfile') { publicProfile.value = !publicProfile.value; val = publicProfile.value; }
   
@@ -1210,6 +1389,8 @@ async function fetchBackgrounds() {
   }
 }
 
+import { defaultBackgrounds as defaultBackgroundsMap } from '../utils/backgrounds';
+
 function applyBackground(bgType, customUrl = '') {
   if (bgType === 'stripes') {
     document.body.style.background = "repeating-linear-gradient(-45deg, #f0f4f8, #f0f4f8 10px, #e2e8f0 10px, #e2e8f0 20px)";
@@ -1226,16 +1407,7 @@ function applyBackground(bgType, customUrl = '') {
       document.body.style.background = "repeating-linear-gradient(-45deg, #f0f4f8, #f0f4f8 10px, #e2e8f0 10px, #e2e8f0 20px)";
     } else {
       // Hardcoded fallback before backgrounds list is fetched or for guest
-      let fallbackUrl = '';
-      if (bgType === 'bliss') {
-        fallbackUrl = 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=1920&q=80';
-      } else if (bgType === 'aqua') {
-        fallbackUrl = 'https://images.unsplash.com/photo-1518837695005-2083093ee35b?auto=format&fit=crop&w=1920&q=80';
-      } else if (bgType === 'space') {
-        fallbackUrl = 'https://images.unsplash.com/photo-1506318137071-a8e063b4bec0?auto=format&fit=crop&w=1920&q=80';
-      } else if (bgType === 'sunset') {
-        fallbackUrl = 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1920&q=80';
-      }
+      const fallbackUrl = defaultBackgroundsMap[bgType];
 
       if (fallbackUrl) {
         document.body.style.background = `url('${fallbackUrl}') no-repeat center center fixed`;
@@ -1322,7 +1494,11 @@ const highlightedAchievementsData = computed(() => {
 const viewedProfileUser = ref(null);
 
 const profileUsername = computed(() => viewedProfileUser.value ? viewedProfileUser.value.username : username.value);
-const profileUserTag = computed(() => viewedProfileUser.value ? String(viewedProfileUser.value.id).slice(-4) : userTag.value);
+const profileUserTag = computed(() => {
+  const idVal = viewedProfileUser.value ? String(viewedProfileUser.value.id) : String(userId.value);
+  if (!idVal) return userTag.value;
+  return idVal.padStart(4, '0').slice(-4);
+});
 const profileUserId = computed(() => viewedProfileUser.value ? String(viewedProfileUser.value.id) : userId.value);
 const profileAvatarUrl = computed(() => viewedProfileUser.value ? viewedProfileUser.value.avatarUrl : avatarUrl.value);
 const profileBannerUrl = computed(() => viewedProfileUser.value ? viewedProfileUser.value.bannerUrl : bannerUrl.value);
@@ -1352,23 +1528,27 @@ const publicHighlightedAchievementsData = computed(() => {
   return highlights.map(id => achievementsList.value.find(a => a.id === id)).filter(Boolean);
 });
 
+function getRarityColor(glowColor) {
+  const colorMap = {
+    cyan: '#06b6d4',      // ciano/cyan
+    emerald: '#10b981',   // esmeralda
+    purple: '#a855f7',    // roxo
+    gold: '#f59e0b',      // ouro/gold
+    yellow: '#eab308',    // amarelo
+    rose: '#ec4899',      // rosa/rose
+    green: '#22c55e',     // verde
+  };
+  return colorMap[glowColor] || '#3b82f6'; // fallback to blue
+}
+
 function getPublicBadgeStyle(ach, profileId) {
+  const color = getRarityColor(ach.glowColor);
   const isWinner = ach.firstWinner && String(ach.firstWinner.id) === String(profileId);
   if (isWinner) {
     return {
-      border: '1.5px solid #fbbf24',
-      background: 'linear-gradient(to bottom, #fffbeb, #fef3c7)',
-      boxShadow: '0 4px 12px rgba(251, 191, 36, 0.15)',
-      cursor: 'pointer',
-      width: '100%',
-      height: '76px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderRadius: '12px'
-    };
-  } else {
-    return {
+      border: `2px solid ${color}`,
+      background: `linear-gradient(135deg, ${color}15, ${color}28)`,
+      boxShadow: `0 4px 12px ${color}30, 0 0 0 1.5px #fbbf24`, // gold ring for first winner
       cursor: 'pointer',
       width: '100%',
       height: '76px',
@@ -1376,8 +1556,21 @@ function getPublicBadgeStyle(ach, profileId) {
       alignItems: 'center',
       justifyContent: 'center',
       borderRadius: '12px',
-      border: '1px solid rgba(0,0,0,0.05)',
-      background: 'rgba(255,255,255,0.7)'
+      position: 'relative'
+    };
+  } else {
+    return {
+      border: `2px solid ${color}`,
+      background: `linear-gradient(135deg, ${color}12, ${color}22)`,
+      boxShadow: `0 4px 12px ${color}25`,
+      cursor: 'pointer',
+      width: '100%',
+      height: '76px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: '12px',
+      position: 'relative'
     };
   }
 }
@@ -1467,6 +1660,44 @@ function promptEditEmail() {
   }
 }
 
+function promptEditUsername() {
+  const newUsername = prompt('Digite o seu novo nome de usuário:', username.value);
+  if (newUsername !== null && newUsername.trim() !== '') {
+    saveProfileChanges({ username: newUsername.trim() });
+  }
+}
+
+const userRequests = ref([]);
+
+async function fetchUserRequests() {
+  try {
+    const data = await apiFetch('/api/requests');
+    if (!data.error) {
+      userRequests.value = data;
+    }
+  } catch (e) {
+    console.error('Erro ao buscar solicitações:', e);
+  }
+}
+
+async function submitRequest({ type, details }) {
+  try {
+    const data = await apiFetch('/api/requests', {
+      method: 'POST',
+      body: JSON.stringify({ type, details })
+    });
+    if (data.error) {
+      showToast(data.error);
+    } else {
+      showToast('Solicitação enviada com sucesso!');
+      await fetchUserRequests();
+    }
+  } catch (e) {
+    console.error('Erro ao enviar solicitação:', e);
+    showToast('Erro ao enviar solicitação');
+  }
+}
+
 async function saveProfileChanges(changes) {
   try {
     const data = await apiFetch('/api/profile', {
@@ -1477,13 +1708,14 @@ async function saveProfileChanges(changes) {
       showToast(data.error);
     } else {
       showToast('Perfil atualizado com sucesso!');
+      if (changes.username !== undefined) username.value = data.user.username;
       if (changes.bio !== undefined) bio.value = data.user.bio || '';
       if (changes.avatarUrl !== undefined) avatarUrl.value = data.user.avatarUrl || '';
       if (changes.bannerUrl !== undefined) bannerUrl.value = data.user.bannerUrl || '';
       if (changes.bannerPositionY !== undefined) bannerPositionY.value = data.user.bannerPositionY || '50%';
       if (changes.profileTextColor !== undefined) profileTextColor.value = data.user.profileTextColor || '#ffffff';
       if (changes.customTags !== undefined) {
-        customTags.value = typeof data.user.customTags === 'string' ? JSON.parse(data.user.customTags || '[]') : (data.user.customTags || []);
+        customTags.value = safeParse(data.user.customTags);
       }
       if (changes.email !== undefined) email.value = data.user.email || 'Não informado';
     }
@@ -1586,6 +1818,9 @@ function handleLogout() {
   window.removeEventListener('online', syncOfflineTrips);
   if (tripInterval) clearInterval(tripInterval);
   if (teleInterval) clearInterval(teleInterval);
+
+  // Stop admin continuous tracking
+  triggerAdminTrackingCheck();
 }
 
 onMounted(async () => {
@@ -1600,8 +1835,20 @@ onMounted(async () => {
     }
   }
 
-  // Handle Join Trip from URL query
+  // Handle Spotify URL queries
   const params = new URLSearchParams(window.location.search);
+  const spotifySuccess = params.get('spotify_success');
+  const spotifyError = params.get('spotify_error');
+  if (spotifySuccess) {
+    showToast('Spotify conectado com sucesso!');
+    window.history.replaceState({}, document.title, window.location.pathname);
+    window.dispatchEvent(new CustomEvent('spotify-status-change'));
+  } else if (spotifyError) {
+    showToast(`Erro ao conectar ao Spotify: ${spotifyError}`, 'error');
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+
+  // Handle Join Trip from URL query
   const joinDriverId = params.get('joinTrip');
   if (joinDriverId) {
     pendingJoinTripDriverId.value = joinDriverId;
@@ -1615,6 +1862,9 @@ onUnmounted(() => {
   if (socket) socket.disconnect();
   if (tripInterval) clearInterval(tripInterval);
   if (teleInterval) clearInterval(teleInterval);
+  if (searchTimeout) clearTimeout(searchTimeout);
+  window.removeEventListener('mousemove', onBannerDrag);
+  window.removeEventListener('mouseup', stopBannerDrag);
   if (publicProfileMap) {
     publicProfileMap.remove();
     publicProfileMap = null;
@@ -1738,6 +1988,7 @@ modalsToWatch.forEach(m => {
           :totalHours="totalHours"
           :tripStartTime="tripStartTime"
           :getFullUrl="getFullUrl"
+          :carLocation="carLocation"
           @open-start-trip-modal="openStartTripModal"
           @end-trip="endTrip"
           @show-qr-code="showQrCodeModal = true"
@@ -1815,12 +2066,15 @@ modalsToWatch.forEach(m => {
       <div :class="['page', activePage === 'settings' ? 'active' : '']" id="page-settings">
         <SettingsTab
           :userId="userId"
+          :username="username"
           :email="email"
           :pushNotifications="pushNotifications"
-          :xpAlerts="xpAlerts"
+          :pointsAlerts="pointsAlerts"
           :socialRanking="socialRanking"
           :publicProfile="publicProfile"
           :showMusicWidget="showMusicWidget"
+          :requests="userRequests"
+          :spotifyConnected="spotifyConnected"
           v-model:sfxVolume="sfxVolume"
           v-model:musicVolume="musicVolume"
           v-model:appBgType="appBgType"
@@ -1830,6 +2084,10 @@ modalsToWatch.forEach(m => {
           @update-volume="updateVolume"
           @change-bg="changeBg"
           @prompt-edit-email="promptEditEmail"
+          @prompt-edit-username="promptEditUsername"
+          @submit-request="submitRequest"
+          @connect-spotify="connectSpotify"
+          @disconnect-spotify="disconnectSpotify"
           @logout="handleLogout"
         />
       </div>
@@ -1867,7 +2125,7 @@ modalsToWatch.forEach(m => {
         </div>
         <!-- Color presets -->
         <div style="display: flex; gap: 8px; margin-top: 4px; flex-wrap: wrap;">
-          <button v-for="c in ['#3b82f6', '#10b981', '#9333ea', '#f59e0b', '#ef4444', '#6366f1', '#ec4899']" :key="c" @click="tagModalForm.color = c" :style="{ backgroundColor: c }" style="width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid white; cursor: pointer; transition: transform 0.15s;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'"></button>
+          <button v-for="c in ['#3b82f6', '#10b981', '#9333ea', '#f59e0b', '#ef4444', '#6366f1', '#ec4899']" :key="c" @click="tagModalForm.color = c" :style="{ backgroundColor: c }" style="width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid white; cursor: pointer; transition: transform 0.15s;" class="tag-preset-color-btn"></button>
         </div>
       </div>
 
@@ -1880,73 +2138,112 @@ modalsToWatch.forEach(m => {
 
   <!-- Modal de Configuração de Corrida -->
   <div v-if="showStartTripModal" style="position: fixed; inset: 0; background: rgba(15, 23, 42, 0.4); display: flex; align-items: center; justify-content: center; z-index: 10000; backdrop-filter: blur(8px);">
-    <div class="glass no-scroll" style="width: 100%; max-width: 520px; max-height: 85vh; display: flex; flex-direction: column; background: rgba(255, 255, 255, 0.95); border: 1px solid rgba(255, 255, 255, 0.8); border-radius: 28px; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15); padding: 24px; box-sizing: border-box; overflow: hidden;">
+    <div class="glass no-scroll" style="width: 100%; max-width: 900px; max-height: 90vh; display: flex; flex-direction: column; background: rgba(255, 255, 255, 0.95); border: 1px solid rgba(255, 255, 255, 0.8); border-radius: 28px; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15); padding: 28px; box-sizing: border-box; overflow: hidden;">
       
       <!-- Header -->
-      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px;">
-        <h2 style="margin: 0; font-size: 18px; font-weight: 800; color: #1e293b; display: flex; align-items: center; gap: 8px;">🏎️ Configurar Corrida</h2>
-        <button @click="showStartTripModal = false" style="background: none; border: none; font-size: 18px; color: #64748b; cursor: pointer; padding: 4px;">✕</button>
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+        <h2 style="margin: 0; font-size: 20px; font-weight: 800; color: #1e293b; display: flex; align-items: center; gap: 8px; font-family: 'Space Grotesk', sans-serif;">🏎️ Configurar Corrida</h2>
+        <button @click="showStartTripModal = false" style="background: none; border: none; font-size: 20px; color: #64748b; cursor: pointer; padding: 4px;">✕</button>
       </div>
 
-      <!-- Scrollable content -->
-      <div class="no-scroll" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding-right: 4px;">
+      <!-- Scrollable content - Two columns grid -->
+      <div class="no-scroll" style="flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 24px; padding-right: 4px; box-sizing: border-box;">
         
-        <!-- Presets Section -->
-        <div>
-          <label style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; display: block;">Meus Presets</label>
-          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-            <div v-for="preset in savedPresets" :key="preset.id" style="display: flex; align-items: center; background: #f1f5f9; border-radius: 12px; padding: 4px 10px; border: 1px solid #e2e8f0;">
-              <span @click="selectPreset(preset)" style="font-size: 12px; font-weight: 600; color: #334155; cursor: pointer; display: flex; align-items: center; gap: 4px;">📂 {{ preset.name }}</span>
-              <button @click="deletePreset(preset.id)" style="background: none; border: none; color: #94a3b8; cursor: pointer; margin-left: 8px; padding: 2px; font-size: 12px;" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#94a3b8'">×</button>
-            </div>
-            <div v-if="savedPresets.length === 0" style="font-size: 12px; color: #94a3b8; font-style: italic;">Nenhum preset salvo. Preencha os campos abaixo para salvar.</div>
-          </div>
-        </div>
+        <!-- Left Column: Route & Presets -->
+        <div style="background: rgba(248, 250, 252, 0.65); border: 1px solid rgba(226, 232, 240, 0.8); border-radius: 20px; padding: 20px; display: flex; flex-direction: column; gap: 16px; box-sizing: border-box;">
+          <h3 style="margin: 0 0 4px 0; font-size: 14px; font-weight: 800; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; font-family: 'Space Grotesk', sans-serif;">📍 Detalhes da Rota</h3>
 
-        <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 4px 0;" />
-
-        <!-- Departure Address -->
-        <div style="position: relative; display: flex; flex-direction: column; gap: 6px;">
-          <label style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Ponto de Partida</label>
-          <input 
-            v-model="startTripForm.departure" 
-            @input="handleAddressInput($event.target.value, 'departure')"
-            type="text" 
-            placeholder="Endereço de partida ou coordenada..." 
-            style="padding: 10px 14px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 13px; outline: none; box-sizing: border-box;" 
-          />
-          <!-- Suggestions Dropdown -->
-          <div v-if="activeSuggestions.field === 'departure' && activeSuggestions.list.length > 0" class="suggestions-dropdown">
-            <div 
-              v-for="(item, idx) in activeSuggestions.list" 
-              :key="idx" 
-              @click="selectSuggestion(item)"
-              class="suggestion-item"
-            >
-              {{ item.display_name }}
+          <!-- Presets Section -->
+          <div>
+            <label style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; display: block;">Meus Presets</label>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <div v-for="preset in savedPresets" :key="preset.id" style="display: flex; align-items: center; background: rgba(255, 255, 255, 0.8); border-radius: 10px; padding: 4px 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+                <span @click="selectPreset(preset)" style="font-size: 12px; font-weight: 600; color: #334155; cursor: pointer; display: flex; align-items: center; gap: 4px;">📂 {{ preset.name }}</span>
+                <button @click="deletePreset(preset.id)" style="background: none; border: none; color: #94a3b8; cursor: pointer; margin-left: 8px; padding: 2px; font-size: 12px;" class="delete-preset-btn">×</button>
+              </div>
+              <div v-if="savedPresets.length === 0" style="font-size: 12px; color: #94a3b8; font-style: italic;">Nenhum preset salvo.</div>
             </div>
           </div>
-        </div>
 
-        <!-- Stops Section -->
-        <div style="display: flex; flex-direction: column; gap: 8px;">
-          <div style="display: flex; align-items: center; justify-content: space-between;">
-            <label style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Paradas Intermediárias</label>
-            <button @click="addStop" style="background: none; border: none; color: #3b82f6; font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 2px;">➕ Add Parada</button>
-          </div>
-          
-          <div v-for="(stop, index) in startTripForm.stops" :key="index" style="position: relative; display: flex; align-items: center; gap: 8px;">
+          <!-- GPS tracking checkbox -->
+          <div style="display: flex; align-items: center; gap: 10px; background: rgba(16, 185, 129, 0.05); border: 1px dashed rgba(16, 185, 129, 0.25); padding: 12px 14px; border-radius: 14px;">
             <input 
-              v-model="stop.address" 
-              @input="handleAddressInput($event.target.value, 'stop', index)"
-              type="text" 
-              placeholder="Endereço da parada..." 
-              style="flex: 1; padding: 10px 14px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 13px; outline: none; box-sizing: border-box;" 
+              v-model="startTripForm.useDeviceLocation" 
+              type="checkbox" 
+              id="useDeviceLocation"
+              style="width: 17px; height: 17px; accent-color: #10b981; cursor: pointer;"
             />
-            <button @click="removeStop(index)" style="background: none; border: none; color: #ef4444; font-size: 16px; cursor: pointer; padding: 4px;">✕</button>
-            
+            <label for="useDeviceLocation" style="font-size: 12px; font-weight: 700; color: #065f46; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 4px; font-family: 'Space Grotesk', sans-serif;">
+              📍 Usar GPS do dispositivo em tempo real
+            </label>
+          </div>
+
+          <!-- Departure Address -->
+          <div style="position: relative; display: flex; flex-direction: column; gap: 6px;">
+            <label style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Ponto de Partida</label>
+            <input 
+              v-model="startTripForm.departure" 
+              @input="handleAddressInput($event.target.value, 'departure')"
+              type="text" 
+              placeholder="Endereço de partida ou coordenada..." 
+              style="width: 100%; padding: 11px 14px; border-radius: 14px; border: 1px solid rgba(148, 163, 184, 0.3); background: rgba(255, 255, 255, 0.9); font-size: 13px; outline: none; box-sizing: border-box; font-family: 'Space Grotesk', sans-serif;" 
+            />
             <!-- Suggestions Dropdown -->
-            <div v-if="activeSuggestions.field === 'stop' && activeSuggestions.index === index && activeSuggestions.list.length > 0" class="suggestions-dropdown">
+            <div v-if="activeSuggestions.field === 'departure' && activeSuggestions.list.length > 0" class="suggestions-dropdown">
+              <div 
+                v-for="(item, idx) in activeSuggestions.list" 
+                :key="idx" 
+                @click="selectSuggestion(item)"
+                class="suggestion-item"
+              >
+                {{ item.display_name }}
+              </div>
+            </div>
+          </div>
+
+          <!-- Stops Section -->
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <label style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Paradas Intermediárias</label>
+              <button @click="addStop" style="background: none; border: none; color: #3b82f6; font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 2px; font-family: 'Space Grotesk', sans-serif;">➕ Add Parada</button>
+            </div>
+            
+            <div v-for="(stop, index) in startTripForm.stops" :key="index" style="position: relative; display: flex; align-items: center; gap: 8px;">
+              <input 
+                v-model="stop.address" 
+                @input="handleAddressInput($event.target.value, 'stop', index)"
+                type="text" 
+                placeholder="Endereço da parada..." 
+                style="flex: 1; padding: 11px 14px; border-radius: 14px; border: 1px solid rgba(148, 163, 184, 0.3); background: rgba(255, 255, 255, 0.9); font-size: 13px; outline: none; box-sizing: border-box; font-family: 'Space Grotesk', sans-serif;" 
+              />
+              <button @click="removeStop(index)" style="background: none; border: none; color: #ef4444; font-size: 16px; cursor: pointer; padding: 4px;">✕</button>
+              
+              <!-- Suggestions Dropdown -->
+              <div v-if="activeSuggestions.field === 'stop' && activeSuggestions.index === index && activeSuggestions.list.length > 0" class="suggestions-dropdown">
+                <div 
+                  v-for="(item, idx) in activeSuggestions.list" 
+                  :key="idx" 
+                  @click="selectSuggestion(item)"
+                  class="suggestion-item"
+                >
+                  {{ item.display_name }}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Destination Address -->
+          <div style="position: relative; display: flex; flex-direction: column; gap: 6px;">
+            <label style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Destino Final</label>
+            <input 
+              v-model="startTripForm.destination" 
+              @input="handleAddressInput($event.target.value, 'destination')"
+              type="text" 
+              placeholder="Endereço de destino..." 
+              style="width: 100%; padding: 11px 14px; border-radius: 14px; border: 1px solid rgba(148, 163, 184, 0.3); background: rgba(255, 255, 255, 0.9); font-size: 13px; outline: none; box-sizing: border-box; font-family: 'Space Grotesk', sans-serif;" 
+            />
+            <!-- Suggestions Dropdown -->
+            <div v-if="activeSuggestions.field === 'destination' && activeSuggestions.list.length > 0" class="suggestions-dropdown">
               <div 
                 v-for="(item, idx) in activeSuggestions.list" 
                 :key="idx" 
@@ -1959,102 +2256,90 @@ modalsToWatch.forEach(m => {
           </div>
         </div>
 
-        <!-- Destination Address -->
-        <div style="position: relative; display: flex; flex-direction: column; gap: 6px;">
-          <label style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Destino Final</label>
-          <input 
-            v-model="startTripForm.destination" 
-            @input="handleAddressInput($event.target.value, 'destination')"
-            type="text" 
-            placeholder="Endereço de destino..." 
-            style="padding: 10px 14px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 13px; outline: none; box-sizing: border-box;" 
-          />
-          <!-- Suggestions Dropdown -->
-          <div v-if="activeSuggestions.field === 'destination' && activeSuggestions.list.length > 0" class="suggestions-dropdown">
-            <div 
-              v-for="(item, idx) in activeSuggestions.list" 
-              :key="idx" 
-              @click="selectSuggestion(item)"
-              class="suggestion-item"
-            >
-              {{ item.display_name }}
-            </div>
-          </div>
-        </div>
+        <!-- Right Column: Passengers & Presets Save -->
+        <div style="background: rgba(248, 250, 252, 0.65); border: 1px solid rgba(226, 232, 240, 0.8); border-radius: 20px; padding: 20px; display: flex; flex-direction: column; gap: 18px; justify-content: space-between; box-sizing: border-box;">
+          <div style="display: flex; flex-direction: column; gap: 16px;">
+            <h3 style="margin: 0; font-size: 14px; font-weight: 800; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; font-family: 'Space Grotesk', sans-serif;">👤 Passageiros & Assentos</h3>
 
-        <!-- Add Passenger Modal Section -->
-        <div style="display: flex; flex-direction: column; gap: 8px;">
-          <label style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Passageiros Iniciais</label>
-          <div style="display: flex; gap: 8px;">
-            <div style="position: relative; flex: 1;">
-              <input 
-                v-model="newModalPassenger.name" 
-                type="text" 
-                placeholder="Nome ou busque motorista..." 
-                style="width: 100%; padding: 10px 14px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 13px; outline: none; box-sizing: border-box;"
-                @focus="showUserSelectMenu = true"
-                @blur="setTimeout(() => showUserSelectMenu = false, 200)"
-              />
-              <!-- Dropdown suggestions from global user accounts -->
-              <div v-if="showUserSelectMenu && availableUsersForPassengers.length > 0" ref="userSelectContainer" style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #cbd5e1; border-radius: 12px; margin-top: 4px; max-height: 160px; overflow-y: auto; z-index: 20000; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
-                <div 
-                  v-for="u in availableUsersForPassengers" 
-                  :key="u.userId"
-                  @mousedown="newModalPassenger.name = u.name"
-                  style="padding: 8px 12px; font-size: 12px; color: #334155; cursor: pointer; display: flex; align-items: center; gap: 8px;"
-                  onmouseover="this.style.backgroundColor='#f1f5f9'"
-                  onmouseout="this.style.backgroundColor='transparent'"
-                >
-                  <img 
-                    v-if="u.avatarUrl" 
-                    :src="getFullUrl(u.avatarUrl)" 
-                    style="width: 20px; height: 20px; border-radius: 50%; object-fit: cover;" 
+            <!-- Add Passenger Section -->
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <label style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Adicionar Passageiro</label>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <div style="position: relative; flex: 1;">
+                  <input 
+                    v-model="newModalPassenger.name" 
+                    type="text" 
+                    placeholder="Buscar ou digitar nome..." 
+                    style="width: 100%; padding: 11px 14px; border-radius: 14px; border: 1px solid rgba(148, 163, 184, 0.3); background: rgba(255, 255, 255, 0.9); font-size: 13px; outline: none; box-sizing: border-box; font-family: 'Space Grotesk', sans-serif;"
+                    @focus="showUserSelectMenu = true"
+                    @blur="setTimeout(() => showUserSelectMenu = false, 200)"
                   />
-                  <span v-else>👤</span>
-                  <span>{{ u.name }}</span>
+                  <!-- Dropdown suggestions from global user accounts -->
+                  <div v-if="showUserSelectMenu && availableUsersForPassengers.length > 0" ref="userSelectContainer" style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #cbd5e1; border-radius: 14px; margin-top: 4px; max-height: 160px; overflow-y: auto; z-index: 20000; box-shadow: 0 10px 25px rgba(0,0,0,0.08);">
+                    <div 
+                      v-for="u in availableUsersForPassengers" 
+                      :key="u.userId"
+                      @mousedown="newModalPassenger.name = u.name"
+                      style="padding: 10px 14px; font-size: 12px; color: #334155; cursor: pointer; display: flex; align-items: center; gap: 10px;"
+                      class="user-suggestion-item"
+                    >
+                      <img 
+                        v-if="u.avatarUrl" 
+                        :src="getFullUrl(u.avatarUrl)" 
+                        style="width: 22px; height: 22px; border-radius: 50%; object-fit: cover;" 
+                      />
+                      <span v-else style="font-size: 14px;">👤</span>
+                      <span style="font-weight: 600;">{{ u.name }}</span>
+                    </div>
+                  </div>
                 </div>
+                
+                <select v-model="newModalPassenger.role" style="padding: 11px 14px; border-radius: 14px; border: 1px solid rgba(148, 163, 184, 0.3); background: rgba(255, 255, 255, 0.9); font-size: 13px; outline: none; cursor: pointer; font-family: 'Space Grotesk', sans-serif;">
+                  <option value="" disabled selected>Assento</option>
+                  <option value="Co-piloto 🧭">Co-piloto 🧭</option>
+                  <option value="Traseiro Esq. 🚗">Traseiro Esq. 🚗</option>
+                  <option value="Traseiro Dir. 🚗">Traseiro Dir. 🚗</option>
+                  <option value="Traseiro Meio 🚗">Traseiro Meio 🚗</option>
+                </select>
+                
+                <button @click="addModalPassenger" style="padding: 11px 18px; border-radius: 14px; border: none; background: #3b82f6; color: white; font-weight: 700; font-size: 15px; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='#2563eb'" onmouseout="this.style.background='#3b82f6'">+</button>
               </div>
             </div>
-            
-            <select v-model="newModalPassenger.role" style="padding: 10px 14px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 13px; background: white; outline: none; cursor: pointer;">
-              <option value="" disabled selected>Assento</option>
-              <option value="Co-piloto 🧭">Co-piloto 🧭</option>
-              <option value="Traseiro Esq. 🚗">Traseiro Esq. 🚗</option>
-              <option value="Traseiro Dir. 🚗">Traseiro Dir. 🚗</option>
-              <option value="Traseiro Meio 🚗">Traseiro Meio 🚗</option>
-            </select>
-            
-            <button @click="addModalPassenger" style="padding: 10px 16px; border-radius: 12px; border: none; background: #3b82f6; color: white; font-weight: 700; font-size: 13px; cursor: pointer;">+</button>
-          </div>
 
-          <!-- Added Passengers List -->
-          <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px;">
-            <div v-for="(pass, index) in startTripForm.passengers" :key="index" style="display: flex; align-items: center; gap: 6px; background: rgba(147, 51, 234, 0.08); border: 1px solid rgba(147, 51, 234, 0.15); color: #7c3aed; padding: 4px 10px; border-radius: 99px; font-size: 11px; font-weight: 700;">
-              <span>{{ pass.name }} ({{ pass.role.replace(' 🧭','').replace(' 🚗','') }})</span>
-              <button @click="removeModalPassenger(index)" style="background: none; border: none; color: #9333ea; cursor: pointer; font-size: 12px; padding: 2px;">×</button>
+            <!-- Added Passengers List -->
+            <div>
+              <label style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; display: block;">Passageiros Confirmados ({{ startTripForm.passengers.length }})</label>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap; max-height: 130px; overflow-y: auto; padding: 2px;">
+                <div v-for="(pass, index) in startTripForm.passengers" :key="index" style="display: flex; align-items: center; gap: 6px; background: rgba(147, 51, 234, 0.06); border: 1px solid rgba(147, 51, 234, 0.15); color: #7c3aed; padding: 6px 12px; border-radius: 99px; font-size: 12px; font-weight: 700; font-family: 'Space Grotesk', sans-serif; box-shadow: 0 1px 3px rgba(147, 51, 234, 0.05);">
+                  <span>{{ pass.name }} <span style="opacity: 0.65; font-size: 10px; font-weight: 500;">({{ pass.role.replace(' 🧭','').replace(' 🚗','') }})</span></span>
+                  <button @click="removeModalPassenger(index)" style="background: none; border: none; color: #7c3aed; cursor: pointer; font-size: 13px; font-weight: 700; padding: 0 2px; line-height: 1;">×</button>
+                </div>
+                <div v-if="startTripForm.passengers.length === 0" style="font-size: 12px; color: #94a3b8; font-style: italic;">Nenhum passageiro adicionado ainda.</div>
+              </div>
             </div>
           </div>
-        </div>
 
-        <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 4px 0;" />
-
-        <!-- Preset Name & Save Action -->
-        <div style="display: flex; gap: 8px; align-items: center;">
-          <input 
-            v-model="newPresetName" 
-            type="text" 
-            placeholder="Nome do novo preset..." 
-            style="flex: 1; padding: 10px 14px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 13px; outline: none;" 
-          />
-          <button @click="saveCurrentAsPreset" style="padding: 10px 16px; border-radius: 12px; border: 1px solid #3b82f6; background: transparent; color: #3b82f6; font-weight: 700; font-size: 13px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#3b82f6'; this.style.color='white'" onmouseout="this.style.background='transparent'; this.style.color='#3b82f6'">Salvar Preset</button>
+          <!-- Save Current settings as Preset -->
+          <div style="background: rgba(255,255,255,0.45); border: 1px solid rgba(226, 232, 240, 0.7); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 10px; margin-top: auto;">
+            <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; font-family: 'Space Grotesk', sans-serif;">💾 Salvar Preset de Rota</label>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <input 
+                v-model="newPresetName" 
+                type="text" 
+                placeholder="Nome do preset (ex: Trabalho)..." 
+                style="flex: 1; padding: 10px 14px; border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.25); background: white; font-size: 12px; outline: none; font-family: 'Space Grotesk', sans-serif;" 
+              />
+              <button @click="saveCurrentAsPreset" style="padding: 10px 16px; border-radius: 12px; border: 1px solid #3b82f6; background: transparent; color: #3b82f6; font-weight: 700; font-size: 12px; cursor: pointer; transition: all 0.2s;" class="save-preset-btn">Salvar</button>
+            </div>
+          </div>
         </div>
 
       </div>
 
       <!-- Action Footer -->
-      <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px;">
-        <button @click="showStartTripModal = false" style="padding: 12px 24px; border-radius: 99px; border: none; background: #f1f5f9; color: #64748b; font-size: 14px; font-weight: 700; cursor: pointer;">Cancelar</button>
-        <button @click="confirmStartTrip" style="padding: 12px 28px; border-radius: 99px; border: none; background: #10b981; color: white; font-size: 14px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);">🚀 Iniciar</button>
+      <div style="display: flex; gap: 14px; justify-content: flex-end; margin-top: 24px; border-top: 1px solid rgba(226, 232, 240, 0.6); padding-top: 18px;">
+        <button @click="showStartTripModal = false" style="padding: 12px 26px; border-radius: 99px; border: none; background: #f1f5f9; color: #475569; font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.2s; font-family: 'Space Grotesk', sans-serif;" onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f1f5f9'">Cancelar</button>
+        <button @click="confirmStartTrip" style="padding: 12px 32px; border-radius: 99px; border: none; background: #10b981; color: white; font-size: 14px; font-weight: 800; cursor: pointer; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.25); transition: all 0.2s; font-family: 'Space Grotesk', sans-serif;" onmouseover="this.style.background='#059669'" onmouseout="this.style.background='#10b981'">🚀 Iniciar Viagem</button>
       </div>
 
     </div>
@@ -2064,7 +2349,7 @@ modalsToWatch.forEach(m => {
   <div v-if="showQrCodeModal" style="position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000; backdrop-filter: blur(4px);">
     <div class="glass" style="max-width: 360px; width: 90%; padding: 28px; display: flex; flex-direction: column; align-items: center; gap: 20px; background: rgba(255,255,255,0.95); box-shadow: 0 10px 25px rgba(0,0,0,0.15); text-align: center;">
       <h3 style="font-size: 18px; font-weight: 800; color: #1e293b; margin: 0; font-family: 'Space Grotesk', sans-serif;">Conectar Passageiro</h3>
-      <p style="font-size: 13px; color: #64748b; margin: 0;">Peça para os co-pilotos escanearem o código abaixo para se juntarem a corrida e ganharem XP!</p>
+      <p style="font-size: 13px; color: #64748b; margin: 0;">Peça para os co-pilotos escanearem o código abaixo para se juntarem a corrida e ganharem Pontos!</p>
       
       <!-- QR Image canvas fallback -->
       <div style="padding: 16px; background: white; border-radius: 16px; box-shadow: inset 0 2px 8px rgba(0,0,0,0.06); display: flex; align-items: center; justify-content: center;">
@@ -2072,7 +2357,7 @@ modalsToWatch.forEach(m => {
       </div>
 
       <div style="width: 100%; display: flex; flex-direction: column; gap: 8px;">
-        <button @click="copyJoinLink" style="width: 100%; padding: 12px; border-radius: 12px; border: 1.5px solid rgba(59, 130, 246, 0.2); background: rgba(59, 130, 246, 0.05); color: #3b82f6; font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='rgba(59, 130, 246, 0.1)'" onmouseout="this.style.background='rgba(59, 130, 246, 0.05)'">📋 Copiar Link de Convite</button>
+        <button @click="copyJoinLink" style="width: 100%; padding: 12px; border-radius: 12px; border: 1.5px solid rgba(59, 130, 246, 0.2); background: rgba(59, 130, 246, 0.05); color: #3b82f6; font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s;" class="copy-join-link-btn">📋 Copiar Link de Convite</button>
         <button @click="showQrCodeModal = false" style="width: 100%; padding: 12px; border-radius: 12px; border: none; background: #3b82f6; color: white; font-size: 13px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(59,130,246,0.3);">Concluído</button>
       </div>
     </div>
@@ -2128,88 +2413,85 @@ modalsToWatch.forEach(m => {
   <!-- Public Profile Modal -->
   <div v-if="showPublicProfile" style="position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000; backdrop-filter: blur(4px);">
     <div v-if="isLoadingProfile" style="color: white; font-weight: bold; font-size: 16px;">Carregando perfil...</div>
-    <div v-else-if="publicProfileData" class="glass" style="max-width: 750px; width: 90%; max-height: 90vh; overflow-y: auto; padding: 32px; display: flex; flex-direction: column; gap: 24px; background: rgba(255,255,255,0.95); box-shadow: 0 12px 30px rgba(0,0,0,0.2); position: relative;">
+    <div v-else-if="publicProfileData" class="glass public-profile-modal" style="max-width: 750px; width: 90%; max-height: 90vh; overflow-y: auto; padding: 32px; display: flex; flex-direction: column; gap: 24px; background: rgba(255,255,255,0.95); box-shadow: 0 12px 30px rgba(0,0,0,0.2); position: relative;">
       
       <!-- Close button -->
       <button @click="closePublicProfile" style="position: absolute; top: 16px; right: 16px; width: 32px; height: 32px; border-radius: 16px; background: rgba(0,0,0,0.1); border: none; font-size: 14px; cursor: pointer; z-index: 10; display: flex; align-items: center; justify-content: center; font-weight: bold;">✕</button>
 
       <!-- View Full Profile button -->
-      <button @click="viewFullProfile(publicProfileData)" style="position: absolute; top: 16px; left: 16px; width: 32px; height: 32px; border-radius: 16px; background: rgba(255,255,255,0.85); border: 1px solid rgba(0,0,0,0.15); font-size: 14px; cursor: pointer; z-index: 10; display: flex; align-items: center; justify-content: center; font-weight: bold; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" title="Ver perfil completo">
-        🔎
-      </button>
+      <button @click="viewFullProfile(publicProfileData)" style="position: absolute; top: 16px; left: 16px; width: 32px; height: 32px; border-radius: 16px; background: rgba(255,255,255,0.85); border: 1px solid rgba(0,0,0,0.15); font-size: 14px; cursor: pointer; z-index: 10; display: flex; align-items: center; justify-content: center; font-weight: bold;" title="Ver Perfil Completo">👤</button>
 
+      <!-- Banner & Profile Identity (nested to guarantee background coverage on stacked mobile layouts) -->
       <div 
-        v-if="publicProfileData.bannerUrl" 
-        style="position: absolute; top: 0; left: 0; right: 0; height: 180px; background-size: cover; border-radius: 36px 36px 0 0; z-index: 0;"
-        :style="{ backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0) 70%), url(${getFullUrl(publicProfileData.bannerUrl)})`, backgroundPositionX: 'center', backgroundPositionY: publicProfileData.bannerPositionY || '50%' }"
-      ></div>
-
-      <div style="position: relative; z-index: 1; margin-top: 80px;">
-        <div class="profile-header">
-          <div class="profile-identity" style="align-items: flex-end; gap: 16px;">
-            <div class="avatar-wrapper">
-              <div class="avatar-box" style="position: relative; overflow: hidden; border: none; border-radius: 24px; width: 96px; height: 96px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); background: #f1f5f9;">
-                <img v-if="publicProfileData.avatarUrl" :src="getFullUrl(publicProfileData.avatarUrl)" style="width: 100%; height: 100%; object-fit: cover;" />
-                <svg v-else fill="currentColor" viewBox="0 0 24 24" style="width: 48px; height: 48px; color: #94a3b8;">
-                  <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-                </svg>
-              </div>
+        class="profile-banner-container" 
+        style="position: relative; margin-top: -32px; margin-left: -32px; margin-right: -32px; border-radius: 28px 28px 0 0; overflow: hidden; display: flex; align-items: flex-end; justify-content: flex-start; padding: 24px; min-height: 180px; z-index: 1; background-size: cover; background-position: center;"
+        :style="publicProfileData.bannerUrl ? { backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.1) 60%, rgba(0,0,0,0.85) 100%), url(${getFullUrl(publicProfileData.bannerUrl)})`, backgroundPositionY: publicProfileData.bannerPositionY || '50%' } : { backgroundColor: '#475569', backgroundImage: 'linear-gradient(135deg, #1e293b, #475569)' }"
+      >
+        <!-- Profile Identity inside the banner -->
+        <div class="profile-identity" style="position: relative; z-index: 3; align-items: flex-end; gap: 16px; width: 100%;">
+          <div class="avatar-wrapper">
+            <div class="avatar-box" style="position: relative; overflow: hidden; border: none; border-radius: 24px; width: 96px; height: 96px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); background: #f1f5f9;">
+              <img v-if="publicProfileData.avatarUrl" :src="getFullUrl(publicProfileData.avatarUrl)" style="width: 100%; height: 100%; object-fit: cover;" />
+              <svg v-else fill="currentColor" viewBox="0 0 24 24" style="width: 48px; height: 48px; color: #94a3b8;">
+                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+              </svg>
             </div>
-            <div style="background: rgba(0, 0, 0, 0.45); padding: 10px 16px; border-radius: 16px; backdrop-filter: blur(8px); display: flex; flex-direction: column; gap: 4px; border: 1px solid rgba(255,255,255,0.1);">
-              <div class="username-row" style="margin: 0;">
-                <h1 :style="{ color: publicProfileData.profileTextColor || '#ffffff' }" style="font-size: 22px; font-weight: 800; text-shadow: 0 1px 3px rgba(0,0,0,0.5); margin: 0; line-height: 1.2;">{{ publicProfileData.username }}</h1>
-                <span class="id-badge" style="color: #ffffff; background: rgba(255,255,255,0.2); padding: 1px 5px; border-radius: 4px; font-size: 10px; margin-left: 8px;">ID: {{ publicProfileData.id }}</span>
-              </div>
-              
-              <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px;">
-                <div 
-                  v-for="(tag, idx) in publicProfileData.customTags" 
-                  :key="idx" 
-                  :style="{ backgroundColor: tag.color + '15', color: tag.color, borderColor: tag.color + '40' }"
-                  style="padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; border: 1.5px solid; display: flex; align-items: center; gap: 6px;"
-                >
-                  <span>{{ tag.text }}</span>
-                </div>
+          </div>
+          
+          <div class="profile-details-box" style="background: rgba(0, 0, 0, 0.45); padding: 10px 16px; border-radius: 16px; backdrop-filter: blur(8px); display: flex; flex-direction: column; gap: 4px; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 2px;">
+            <div class="username-row" style="margin: 0; display: flex; align-items: center; flex-wrap: wrap;">
+              <h1 :style="{ color: publicProfileData.profileTextColor || '#ffffff' }" style="font-size: 22px; font-weight: 800; text-shadow: 0 1px 3px rgba(0,0,0,0.5); margin: 0; line-height: 1.2;">{{ publicProfileData.username }}</h1>
+              <span class="id-badge" style="color: #ffffff; background: rgba(255,255,255,0.2); padding: 1px 5px; border-radius: 4px; font-size: 10px; margin-left: 8px;">ID: {{ publicProfileData.id }}</span>
+            </div>
+            
+            <div class="profile-tags-wrapper" style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px;">
+              <div 
+                v-for="(tag, idx) in publicProfileData.customTags" 
+                :key="idx" 
+                :style="{ backgroundColor: tag.color + '15', color: tag.color, borderColor: tag.color + '40' }"
+                style="padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; border: 1.5px solid; display: flex; align-items: center; gap: 6px;"
+              >
+                <span>{{ tag.text }}</span>
               </div>
             </div>
           </div>
         </div>
+      </div>
 
-        <div style="display: flex; flex-direction: column; gap: 16px; margin-top: 24px;">
-          <!-- Bio -->
-          <div>
-            <h2 class="profile-section-title">Biografia</h2>
-            <div class="bio-box" style="padding: 12px; background: rgba(0,0,0,0.03); border-radius: 12px; border: 1px solid rgba(0,0,0,0.05);">
-              <p class="bio-text" style="color: #475569; font-style: italic;">"{{ publicProfileData.bio || 'Sem biografia disponível.' }}"</p>
-            </div>
+      <!-- Content sections (Bio and Achievements) positioned correctly below the banner -->
+      <div style="display: flex; flex-direction: column; gap: 16px; width: 100%;">
+        <!-- Bio -->
+        <div>
+          <h2 class="profile-section-title">Biografia</h2>
+          <div class="bio-box" style="padding: 12px; background: rgba(0,0,0,0.03); border-radius: 12px; border: 1px solid rgba(0,0,0,0.05);">
+            <p class="bio-text" style="color: #475569; font-style: italic;">"{{ publicProfileData.bio || 'Sem biografia disponível.' }}"</p>
           </div>
+        </div>
 
-          <!-- Conquistas em Destaque (Perfil Público) -->
-          <div style="display: flex; flex-direction: column; gap: 8px;">
-            <h2 class="profile-section-title">Conquistas em Destaque</h2>
-            <div style="padding: 10px; background: rgba(255,255,255,0.4); border: 1px solid rgba(0,0,0,0.05); border-radius: 20px; display: flex; align-items: center; justify-content: center; min-height: 96px; box-sizing: border-box; width: 100%;">
-              <div class="badge-list" v-if="publicHighlightedAchievementsData.length > 0" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; width: 100%;">
-                <div 
-                  class="badge-item" 
-                  v-for="ach in publicHighlightedAchievementsData" 
-                  :key="ach.id"
-                  @mousemove="handleTrophyHover"
-                  @mouseleave="resetTrophyHover"
-                  :style="getPublicBadgeStyle(ach, publicProfileData.id)"
-                >
-                  <div :style="{ color: ach.glowColor || '#eab308' }" style="font-size: 1.8rem; position: relative; pointer-events: none; display: flex; align-items: center; justify-content: center;">
-                    <span v-if="ach.firstWinner && String(ach.firstWinner.id) === String(publicProfileData.id)" style="position: absolute; top: -6px; right: -6px; font-size: 9px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2)); z-index: 2;">👑</span>
-                    {{ ach.emoji || '🏆' }}
-                  </div>
+        <!-- Conquistas em Destaque (Perfil Público) -->
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <h2 class="profile-section-title">Conquistas em Destaque</h2>
+          <div style="padding: 10px; background: rgba(255,255,255,0.4); border: 1px solid rgba(0,0,0,0.05); border-radius: 20px; display: flex; align-items: center; justify-content: center; min-height: 96px; box-sizing: border-box; width: 100%;">
+            <div class="badge-list public-highlights-grid" v-if="publicHighlightedAchievementsData.length > 0">
+              <div 
+                class="badge-item" 
+                v-for="ach in publicHighlightedAchievementsData" 
+                :key="ach.id"
+                @mousemove="handleTrophyHover"
+                @mouseleave="resetTrophyHover"
+                :style="getPublicBadgeStyle(ach, publicProfileData.id)"
+              >
+                <div :style="{ color: getRarityColor(ach.glowColor) }" style="font-size: 1.8rem; position: relative; pointer-events: none; display: flex; align-items: center; justify-content: center;">
+                  <span v-if="ach.firstWinner && String(ach.firstWinner.id) === String(publicProfileData.id)" style="position: absolute; top: -6px; right: -6px; font-size: 9px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2)); z-index: 2;">👑</span>
+                  {{ ach.emoji || '🏆' }}
                 </div>
               </div>
-              <div v-else style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; width: 100%; height: 100%;">
-                <span style="font-size: 20px; color: #cbd5e1;">🏆</span>
-                <p style="font-style: italic; font-size: 11px; color: #94a3b8; margin: 0;">Nenhuma conquista em destaque.</p>
-              </div>
+            </div>
+            <div v-else style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; width: 100%; height: 100%;">
+              <span style="font-size: 20px; color: #cbd5e1;">🏆</span>
+              <p style="font-style: italic; font-size: 11px; color: #94a3b8; margin: 0;">Nenhuma conquista em destaque.</p>
             </div>
           </div>
-
         </div>
       </div>
     </div>
@@ -2225,4 +2507,21 @@ modalsToWatch.forEach(m => {
 
 <style>
 @import "../styles/dashboard.css";
+
+.tag-preset-color-btn:hover {
+  transform: scale(1.15);
+}
+.delete-preset-btn:hover {
+  color: #ef4444 !important;
+}
+.user-suggestion-item:hover {
+  background-color: #f1f5f9;
+}
+.save-preset-btn:hover {
+  background: #3b82f6 !important;
+  color: white !important;
+}
+.copy-join-link-btn:hover {
+  background: rgba(59, 130, 246, 0.1) !important;
+}
 </style>

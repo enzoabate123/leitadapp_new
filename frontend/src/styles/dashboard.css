@@ -35,23 +35,8 @@
   position: relative;
 }
 
-.item-speed {
-  grid-column: 3;
-  grid-row: 1;
-}
-
-.item-music {
-  grid-column: 3;
-  grid-row: 2;
-}
-
 .item-passengers {
   grid-column: 1;
-  grid-row: 3;
-}
-
-.item-ranking {
-  grid-column: span 2;
   grid-row: 3;
 }
 
@@ -505,15 +490,11 @@
 }
 .music-disc-compact {
   font-size: 16px;
-  animation: compact-spin 4s linear infinite;
+  animation: spin 4s linear infinite;
   animation-play-state: paused;
 }
 .spinning {
   animation-play-state: running !important;
-}
-@keyframes compact-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
 }
 .music-info-compact {
   flex: 1;

@@ -1,9 +1,14 @@
 <script setup>
-import { defineProps, defineEmits } from 'vue';
+import { defineProps, defineEmits, ref } from 'vue';
+import { API_URL } from '../../utils/api';
 
 const props = defineProps({
   userId: {
     type: [String, Number],
+    required: true
+  },
+  username: {
+    type: String,
     required: true
   },
   email: {
@@ -14,7 +19,7 @@ const props = defineProps({
     type: Boolean,
     required: true
   },
-  xpAlerts: {
+  pointsAlerts: {
     type: Boolean,
     required: true
   },
@@ -49,6 +54,14 @@ const props = defineProps({
   showMusicWidget: {
     type: Boolean,
     required: true
+  },
+  requests: {
+    type: Array,
+    default: () => []
+  },
+  spotifyConnected: {
+    type: Boolean,
+    default: false
   }
 });
 
@@ -57,6 +70,10 @@ const emit = defineEmits([
   'update-volume',
   'change-bg',
   'prompt-edit-email',
+  'prompt-edit-username',
+  'submit-request',
+  'connect-spotify',
+  'disconnect-spotify',
   'logout',
   'update:sfxVolume',
   'update:musicVolume',
@@ -83,15 +100,158 @@ function onCustomBgInput(event) {
   emit('update:appCustomBgUrl', event.target.value);
   emit('change-bg');
 }
+
+const isUploadingCustomBg = ref(false);
+
+async function handleCustomBgUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  isUploadingCustomBg.value = true;
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const token = localStorage.getItem('token');
+    const res = await fetch(`${API_URL}/api/upload`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData
+    });
+
+    if (!res.ok) throw new Error('Falha no upload da imagem');
+    const data = await res.json();
+    emit('update:appCustomBgUrl', `${API_URL}${data.fileUrl}`);
+    emit('change-bg');
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    isUploadingCustomBg.value = false;
+  }
+}
+
+const showRequestModal = ref(false);
+const requestForm = ref({
+  type: 'trip',
+  tripName: '',
+  distanceKm: 10,
+  durationMin: 15,
+  passengerCount: 1,
+  avgSpeed: 45,
+  startLocation: '',
+  endLocation: '',
+  achTitle: '',
+  achDescription: '',
+  achEmoji: '🏆',
+  achGlowColor: '',
+  musicTitle: '',
+  audioUrl: '',
+  coverUrl: '',
+  bgTitle: '',
+  bgUrl: ''
+});
+
+function openModal() {
+  requestForm.value = {
+    type: 'trip',
+    tripName: '',
+    distanceKm: 10,
+    durationMin: 15,
+    passengerCount: 1,
+    avgSpeed: 45,
+    startLocation: '',
+    endLocation: '',
+    achTitle: '',
+    achDescription: '',
+    achEmoji: '🏆',
+    achGlowColor: '',
+    musicTitle: '',
+    audioUrl: '',
+    coverUrl: '',
+    bgTitle: '',
+    bgUrl: ''
+  };
+  showRequestModal.value = true;
+}
+
+function submitLocalRequest() {
+  const type = requestForm.value.type;
+  let details = {};
+  
+  if (type === 'trip') {
+    details = {
+      name: requestForm.value.tripName.trim() || 'Corrida Sugerida',
+      distanceKm: parseFloat(requestForm.value.distanceKm) || 0,
+      durationMin: parseInt(requestForm.value.durationMin, 10) || 0,
+      passengerCount: parseInt(requestForm.value.passengerCount, 10) || 1,
+      avgSpeed: parseFloat(requestForm.value.avgSpeed) || null,
+      startLocation: requestForm.value.startLocation.trim() || null,
+      endLocation: requestForm.value.endLocation.trim() || null
+    };
+  } else if (type === 'achievement') {
+    if (!requestForm.value.achTitle.trim()) {
+      alert('O título da medalha é obrigatório.');
+      return;
+    }
+    details = {
+      title: requestForm.value.achTitle.trim(),
+      description: requestForm.value.achDescription.trim() || 'Descrição pendente',
+      emoji: requestForm.value.achEmoji.trim() || '🏆',
+      glowColor: requestForm.value.achGlowColor || null,
+      key: `ach-${Date.now()}`
+    };
+  } else if (type === 'music') {
+    if (!requestForm.value.musicTitle.trim()) {
+      alert('O título da música é obrigatório.');
+      return;
+    }
+    details = {
+      title: requestForm.value.musicTitle.trim(),
+      audioUrl: requestForm.value.audioUrl.trim(),
+      coverUrl: requestForm.value.coverUrl.trim() || null
+    };
+  } else if (type === 'background') {
+    if (!requestForm.value.bgTitle.trim() || !requestForm.value.bgUrl.trim()) {
+      alert('Título e URL da imagem são obrigatórios.');
+      return;
+    }
+    details = {
+      title: requestForm.value.bgTitle.trim(),
+      url: requestForm.value.bgUrl.trim(),
+      key: `bg-${Date.now()}`
+    };
+  }
+
+  emit('submit-request', { type, details });
+  showRequestModal.value = false;
+}
+
+function getRequestLabel(req) {
+  try {
+    const details = typeof req.details === 'string' ? JSON.parse(req.details) : req.details;
+    if (req.type === 'trip') {
+      return `${details.name || 'Corrida'} (${details.distanceKm} km, ${details.durationMin} min)`;
+    }
+    return details.title || 'Sugestão sem título';
+  } catch (_) {
+    return 'Ver detalhes';
+  }
+}
+
+function getStatusStyle(status) {
+  if (status === 'pending') return { backgroundColor: '#fef3c7', color: '#d97706' };
+  if (status === 'approved') return { backgroundColor: '#dcfce7', color: '#15803d' };
+  return { backgroundColor: '#fee2e2', color: '#b91c1c' };
+}
 </script>
 
 <template>
   <div class="settings-tab-container">
-    <div class="profile-card no-hover" style="backdrop-filter: blur(10px); padding: 24px;">
-      
-      <div class="flex flex-col gap-6">
-        <!-- Conta -->
-        <div>
+    <div class="flex flex-col gap-6">
+      <!-- Conta -->
+      <div>
           <p class="profile-section-title" style="padding-left:4px">Minha Conta</p>
           <div class="flex flex-col gap-2">
             <div class="settings-row">
@@ -106,6 +266,22 @@ function onCustomBgInput(event) {
                   <p class="settings-desc">{{ userId }}</p>
                 </div>
               </div>
+            </div>
+            <div class="settings-row" @click="emit('prompt-edit-username')" style="cursor: pointer;">
+              <div class="settings-item-left">
+                <div class="settings-icon-box bg-blue-100" style="background-color: #e0f2fe; color: #0284c7;">
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
+                  </svg>
+                </div>
+                <div>
+                  <p class="settings-label">Nome de Usuário</p>
+                  <p class="settings-desc">{{ username }}</p>
+                </div>
+              </div>
+              <svg class="settings-row-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
+              </svg>
             </div>
             <div class="settings-row" @click="emit('prompt-edit-email')" style="cursor: pointer;">
               <div class="settings-item-left">
@@ -122,6 +298,38 @@ function onCustomBgInput(event) {
               <svg class="settings-row-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
               </svg>
+            </div>
+            <!-- Spotify Integration -->
+            <div class="settings-row" style="cursor: default;">
+              <div class="settings-item-left">
+                <div class="settings-icon-box" style="background-color: #e8fbf0; color: #1db954;">
+                  <svg viewBox="0 0 24 24" fill="currentColor" style="width: 20px; height: 20px;">
+                    <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.565.387-.86.207-2.377-1.454-5.37-1.783-8.892-.982-.336.076-.67-.135-.747-.472-.077-.336.135-.67.472-.747 3.852-.879 7.144-.505 9.822 1.135.295.18.387.565.207.86zm1.225-2.72c-.226.367-.707.487-1.074.26-2.72-1.672-6.87-2.157-10.082-1.182-.413.125-.85-.107-.975-.52-.125-.413.107-.85.52-.975 3.678-1.117 8.243-.574 11.35 1.337.368.227.488.708.26 1.08zm.106-2.833C14.39 8.879 8.57 8.686 5.2 9.71c-.512.155-1.04-.135-1.196-.648-.156-.513.136-1.04.648-1.197 3.874-1.176 10.3-1.008 14.398 1.425.46.273.61.87.337 1.33-.273.46-.87.61-1.33.337z"/>
+                  </svg>
+                </div>
+                <div>
+                  <p class="settings-label">Integração Spotify</p>
+                  <p class="settings-desc">{{ spotifyConnected ? 'Conectado com sucesso' : 'Sincronizar música ativa' }}</p>
+                </div>
+              </div>
+              <div>
+                <button 
+                  v-if="!spotifyConnected" 
+                  @click="emit('connect-spotify')" 
+                  class="btn-xp green-btn" 
+                  style="padding: 4px 10px; font-size: 11px; background-color: #1db954; border-color: #1aa34a;"
+                >
+                  Conectar 🔗
+                </button>
+                <button 
+                  v-else 
+                  @click="emit('disconnect-spotify')" 
+                  class="btn-xp red-btn" 
+                  style="padding: 4px 10px; font-size: 11px;"
+                >
+                  Desconectar ❌
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -157,13 +365,13 @@ function onCustomBgInput(event) {
                   </svg>
                 </div>
                 <div>
-                  <p class="settings-label">Alertas de XP</p>
+                  <p class="settings-label">Alertas de Pontos</p>
                   <p class="settings-desc">Quando ganhar pontos</p>
                 </div>
               </div>
               <div 
-                :class="['toggle', xpAlerts ? 'on' : 'off']" 
-                @click="emit('toggle-setting', 'xpAlerts')"
+                :class="['toggle', pointsAlerts ? 'on' : 'off']" 
+                @click="emit('toggle-setting', 'pointsAlerts')"
               >
                 <div class="toggle-knob"></div>
               </div>
@@ -274,9 +482,16 @@ function onCustomBgInput(event) {
                     <option value="custom">Inserir Link Personalizado...</option>
                   </select>
                   
-                  <div v-if="appBgType === 'custom'" style="width: 100%; display: flex; flex-direction: column; gap: 4px;">
-                    <label style="font-size: 11px; font-weight: 600; color: #475569;">URL da Imagem:</label>
-                    <input :value="appCustomBgUrl" @input="onCustomBgInput" type="text" placeholder="https://exemplo.com/imagem.jpg" style="width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(0,0,0,0.1); background: rgba(255,255,255,0.8); font-size: 13px; outline: none; box-sizing: border-box;" />
+                  <div v-if="appBgType === 'custom'" style="width: 100%; display: flex; flex-direction: column; gap: 10px;">
+                    <div style="width: 100%; display: flex; flex-direction: column; gap: 4px;">
+                      <label style="font-size: 11px; font-weight: 600; color: #475569;">Fazer Upload de Imagem:</label>
+                      <input type="file" accept="image/*" @change="handleCustomBgUpload" style="font-size: 12px;" />
+                      <span v-if="isUploadingCustomBg" style="font-size: 11px; color: #3b82f6; margin-top: 2px;">⏳ Enviando...</span>
+                    </div>
+                    <div style="width: 100%; display: flex; flex-direction: column; gap: 4px;">
+                      <label style="font-size: 11px; font-weight: 600; color: #475569;">Ou insira a URL da Imagem:</label>
+                      <input :value="appCustomBgUrl" @input="onCustomBgInput" type="text" placeholder="https://exemplo.com/imagem.jpg" style="width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(0,0,0,0.1); background: rgba(255,255,255,0.8); font-size: 13px; outline: none; box-sizing: border-box;" />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -306,6 +521,47 @@ function onCustomBgInput(event) {
               >
                 <div class="toggle-knob"></div>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Central de Sugestões -->
+        <div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-left: 4px;">
+            <p class="profile-section-title" style="margin: 0;">Central de Sugestões</p>
+            <button @click="openModal" style="background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 8px; font-size: 11px; font-weight: 700; cursor: pointer; transition: background 0.2s;">
+              ➕ Sugerir Inclusão
+            </button>
+          </div>
+          
+          <div class="flex flex-col gap-2">
+            <!-- Lista de Solicitações -->
+            <div v-if="requests && requests.length > 0" class="settings-row" style="flex-direction: column; align-items: stretch; gap: 8px; padding: 12px 16px;">
+              <div style="max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;" class="no-scroll">
+                <div v-for="req in requests" :key="req.id" style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; background: rgba(0,0,0,0.02); border-radius: 8px; border: 0.5px solid rgba(0,0,0,0.04);">
+                  <div style="display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1;">
+                    <span style="font-size: 14px;">
+                      {{ req.type === 'trip' ? '🚗' : req.type === 'achievement' ? '🏆' : req.type === 'music' ? '🎵' : '🖼️' }}
+                    </span>
+                    <div style="display: flex; flex-direction: column; min-width: 0; flex: 1;">
+                      <span style="font-size: 11px; font-weight: 700; color: #334155; text-transform: capitalize;">
+                        {{ req.type === 'trip' ? 'Corrida' : req.type === 'achievement' ? 'Medalha' : req.type === 'music' ? 'Música' : 'Plano de Fundo' }}
+                      </span>
+                      <span style="font-size: 9px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        {{ getRequestLabel(req) }}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <span :style="getStatusStyle(req.status)" style="padding: 2px 6px; border-radius: 6px; font-size: 8px; font-weight: 700; text-transform: uppercase;">
+                    {{ req.status === 'pending' ? 'Pendente' : req.status === 'approved' ? 'Aprovado' : 'Rejeitado' }}
+                  </span>
+                </div>
+              </div>
+            </div>
+            
+            <div v-else class="settings-row" style="justify-content: center; padding: 16px; color: #94a3b8; font-size: 12px; font-style: italic;">
+              Nenhuma sugestão enviada ainda.
             </div>
           </div>
         </div>
@@ -351,7 +607,141 @@ function onCustomBgInput(event) {
               </svg>
             </div>
           </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Envio de Sugestão / Solicitação (Central de Sugestões) -->
+  <div v-if="showRequestModal" style="position: fixed; inset: 0; background: rgba(15, 23, 42, 0.4); display: flex; align-items: center; justify-content: center; z-index: 10000; backdrop-filter: blur(8px); padding: 16px; box-sizing: border-box;">
+    <div class="glass" style="width: 100%; max-width: 440px; max-height: 90vh; background: rgba(255, 255, 255, 0.98); border: 1px solid rgba(255, 255, 255, 0.8); border-radius: 24px; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15); padding: 24px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; font-family: 'Space Grotesk', sans-serif;">
+      
+      <!-- Header -->
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; flex-shrink: 0;">
+        <h3 style="margin: 0; font-size: 18px; font-weight: 800; color: #1e293b; display: flex; align-items: center; gap: 8px;">💡 Enviar Nova Sugestão</h3>
+        <button @click="showRequestModal = false" style="background: none; border: none; font-size: 20px; color: #64748b; cursor: pointer; padding: 4px;">✕</button>
+      </div>
+
+      <!-- Form Body (Scrollable) -->
+      <div style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding-right: 4px; box-sizing: border-box;" class="no-scroll">
+        
+        <!-- Type Selector -->
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.05em;">O que você deseja sugerir?</label>
+          <select v-model="requestForm.type" style="width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.3); background: white; font-size: 13px; outline: none; cursor: pointer;">
+            <option value="trip">🚗 Corrida / Viagem</option>
+            <option value="achievement">🏆 Medalha / Conquista</option>
+            <option value="music">🎵 Música para a Playlist</option>
+            <option value="background">🖼️ Imagem de Plano de Fundo</option>
+          </select>
         </div>
+
+        <!-- Dynamic Fields for 'trip' -->
+        <template v-if="requestForm.type === 'trip'">
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">Nome da Corrida</label>
+            <input v-model="requestForm.tripName" type="text" placeholder="Ex: Rota da Faculdade" style="width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.3); font-size: 13px; outline: none; box-sizing: border-box;" />
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">Distância (km)</label>
+              <input v-model="requestForm.distanceKm" type="number" step="0.1" style="width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.3); font-size: 13px; outline: none; box-sizing: border-box;" />
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">Duração (min)</label>
+              <input v-model="requestForm.durationMin" type="number" style="width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.3); font-size: 13px; outline: none; box-sizing: border-box;" />
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">Passageiros</label>
+              <input v-model="requestForm.passengerCount" type="number" style="width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.3); font-size: 13px; outline: none; box-sizing: border-box;" />
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">Velocidade Méd (km/h)</label>
+              <input v-model="requestForm.avgSpeed" type="number" style="width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.3); font-size: 13px; outline: none; box-sizing: border-box;" />
+            </div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">Local de Partida</label>
+            <input v-model="requestForm.startLocation" type="text" placeholder="Ex: Av. Brasil, 1000" style="width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.3); font-size: 13px; outline: none; box-sizing: border-box;" />
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">Local de Destino</label>
+            <input v-model="requestForm.endLocation" type="text" placeholder="Ex: Rua das Flores, 250" style="width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.3); font-size: 13px; outline: none; box-sizing: border-box;" />
+          </div>
+        </template>
+
+        <!-- Dynamic Fields for 'achievement' -->
+        <template v-if="requestForm.type === 'achievement'">
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">Título da Conquista</label>
+            <input v-model="requestForm.achTitle" type="text" placeholder="Ex: Velocista da Madrugada" style="width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.3); font-size: 13px; outline: none; box-sizing: border-box;" />
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">Descrição</label>
+            <textarea v-model="requestForm.achDescription" rows="2" placeholder="Descreva como o usuário pode ganhar essa conquista..." style="width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.3); font-size: 13px; outline: none; font-family: inherit; box-sizing: border-box; resize: none;"></textarea>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">Emoji</label>
+              <input v-model="requestForm.achEmoji" type="text" placeholder="🏆" style="width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.3); font-size: 13px; outline: none; box-sizing: border-box;" />
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">Cor do Brilho</label>
+              <select v-model="requestForm.achGlowColor" style="width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.3); background: white; font-size: 13px; outline: none; cursor: pointer;">
+                <option value="">Sem brilho (Padrão)</option>
+                <option value="cyan">🩵 Ciano</option>
+                <option value="gold">💛 Dourado / Amarelo</option>
+                <option value="rose">🩷 Rosa</option>
+                <option value="green">💚 Verde</option>
+                <option value="purple">💜 Roxo</option>
+              </select>
+            </div>
+          </div>
+        </template>
+
+        <!-- Dynamic Fields for 'music' -->
+        <template v-if="requestForm.type === 'music'">
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">Título / Artista da Música</label>
+            <input v-model="requestForm.musicTitle" type="text" placeholder="Ex: Synthwave Rider - Kavinsky" style="width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.3); font-size: 13px; outline: none; box-sizing: border-box;" />
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">URL do Áudio (MP3)</label>
+            <input v-model="requestForm.audioUrl" type="text" placeholder="https://exemplo.com/musica.mp3" style="width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.3); font-size: 13px; outline: none; box-sizing: border-box;" />
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">URL da Capa (Opcional)</label>
+            <input v-model="requestForm.coverUrl" type="text" placeholder="https://exemplo.com/capa.jpg" style="width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.3); font-size: 13px; outline: none; box-sizing: border-box;" />
+          </div>
+        </template>
+
+        <!-- Dynamic Fields for 'background' -->
+        <template v-if="requestForm.type === 'background'">
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">Nome do Plano de Fundo</label>
+            <input v-model="requestForm.bgTitle" type="text" placeholder="Ex: Cyberpunk Grid" style="width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.3); font-size: 13px; outline: none; box-sizing: border-box;" />
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">URL da Imagem</label>
+            <input v-model="requestForm.bgUrl" type="text" placeholder="https://exemplo.com/wallpaper.jpg" style="width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.3); font-size: 13px; outline: none; box-sizing: border-box;" />
+          </div>
+        </template>
+      </div>
+
+      <!-- Footer Buttons -->
+      <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; padding-top: 14px; border-top: 1px solid rgba(0,0,0,0.06); flex-shrink: 0;">
+        <button @click="showRequestModal = false" style="padding: 10px 18px; border-radius: 12px; border: 1.5px solid rgba(0,0,0,0.08); background: white; font-size: 12px; font-weight: 700; cursor: pointer; color: #475569; font-family: inherit;">Cancelar</button>
+        <button @click="submitLocalRequest" style="padding: 10px 18px; border-radius: 12px; border: none; background: #3b82f6; color: white; font-size: 12px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(59,130,246,0.3); font-family: inherit;">Enviar Sugestão</button>
       </div>
     </div>
   </div>

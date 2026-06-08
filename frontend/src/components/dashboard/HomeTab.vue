@@ -2,6 +2,7 @@
 import { ref, watch, onMounted, onUnmounted } from 'vue';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import RankingRow from './RankingRow.vue';
 
 const props = defineProps({
   tripActive: Boolean,
@@ -16,13 +17,10 @@ const props = defineProps({
   currentArtist: String,
   passengers: Array,
   activeRankingList: Array,
-  userId: String,
-  speed: Number,
-  rpm: Number,
-  battery: Number,
-  totalHours: Number,
+  userId: [String, Number],
   tripStartTime: [Number, String],
-  getFullUrl: Function
+  getFullUrl: Function,
+  carLocation: Object
 });
 
 const emit = defineEmits([
@@ -34,10 +32,10 @@ const emit = defineEmits([
 ]);
 
 function getPassengerLiveStatus(pass) {
-  if (!props.tripActive || !props.tripStartTime) return pass.status || '⚡ 0 XP';
+  if (!props.tripActive || !props.tripStartTime) return pass.status || '⚡ 0 Pontos';
   const elapsedSec = Math.max(0, Math.floor((Date.now() - props.tripStartTime) / 1000));
-  const tripXP = elapsedSec + Math.round(props.tripDistance * 1000);
-  return `⚡ ${tripXP} XP`;
+  const tripPoints = elapsedSec + Math.round(props.tripDistance * 1000);
+  return `⚡ ${tripPoints} Pontos`;
 }
 
 const mapContainer = ref(null);
@@ -89,7 +87,10 @@ function updateCarMarkerPosition(startLat, startLon, endLat, endLon, currentDist
   let lat = startLat;
   let lon = startLon;
 
-  if (routeCoords && routeCoords.length > 0) {
+  if (props.activeTrip && props.activeTrip.currentLat != null && props.activeTrip.currentLon != null) {
+    lat = props.activeTrip.currentLat;
+    lon = props.activeTrip.currentLon;
+  } else if (routeCoords && routeCoords.length > 0) {
     const point = getPointAlongPath(routeCoords, currentDistance);
     if (point) {
       lat = point[0];
@@ -105,6 +106,10 @@ function updateCarMarkerPosition(startLat, startLon, endLat, endLon, currentDist
   }
 
   carMarker.setLatLng([lat, lon]);
+  
+  if (props.activeTrip && props.activeTrip.currentLat != null && props.activeTrip.currentLon != null) {
+    map.value.panTo([lat, lon]);
+  }
 }
 
 function updateMapRoute(startLat, startLon, endLat, endLon, currentDistance, routeCoords = [], keypoints = []) {
@@ -166,6 +171,8 @@ function updateMapRoute(startLat, startLon, endLat, endLon, currentDistance, rou
   updateCarMarkerPosition(startLat, startLon, endLat, endLon, currentDistance, routeCoords);
 }
 
+import { DEFAULT_COORDS } from '../../utils/geo';
+
 function resetMap() {
   if (!map.value) return;
 
@@ -178,28 +185,66 @@ function resetMap() {
   }
   stopMarkers = [];
 
+  const initialCoords = (props.carLocation && props.carLocation.lat != null && props.carLocation.lon != null)
+    ? [props.carLocation.lat, props.carLocation.lon]
+    : DEFAULT_COORDS;
+
   if (carMarker) {
-    carMarker.setLatLng([-23.55052, -46.633308]);
+    carMarker.setLatLng(initialCoords);
   }
 
-  map.value.setView([-23.55052, -46.633308], 15);
+  map.value.setView(initialCoords, 15);
 }
 
 
 
+let lastStartLat = null;
+let lastStartLon = null;
+let lastEndLat = null;
+let lastEndLon = null;
+let lastKeypointsStr = '';
+
 // Watchers for trip states to update Leaflet layers reactively
 watch(() => props.activeTrip, (newTrip) => {
   if (newTrip) {
-    updateMapRoute(
-      newTrip.startLat, 
-      newTrip.startLon, 
-      newTrip.endLat, 
-      newTrip.endLon, 
-      props.tripDistance, 
-      newTrip.routeCoords || [], 
-      newTrip.keypoints || []
-    );
+    const keypointsStr = JSON.stringify(newTrip.keypoints || []);
+    if (
+      newTrip.startLat !== lastStartLat || 
+      newTrip.startLon !== lastStartLon || 
+      newTrip.endLat !== lastEndLat || 
+      newTrip.endLon !== lastEndLon || 
+      keypointsStr !== lastKeypointsStr
+    ) {
+      lastStartLat = newTrip.startLat;
+      lastStartLon = newTrip.startLon;
+      lastEndLat = newTrip.endLat;
+      lastEndLon = newTrip.endLon;
+      lastKeypointsStr = keypointsStr;
+      updateMapRoute(
+        newTrip.startLat, 
+        newTrip.startLon, 
+        newTrip.endLat, 
+        newTrip.endLon, 
+        props.tripDistance, 
+        newTrip.routeCoords || [], 
+        newTrip.keypoints || []
+      );
+    } else {
+      updateCarMarkerPosition(
+        newTrip.startLat,
+        newTrip.startLon,
+        newTrip.endLat,
+        newTrip.endLon,
+        props.tripDistance,
+        newTrip.routeCoords || []
+      );
+    }
   } else {
+    lastStartLat = null;
+    lastStartLon = null;
+    lastEndLat = null;
+    lastEndLon = null;
+    lastKeypointsStr = '';
     resetMap();
   }
 }, { deep: true });
@@ -217,12 +262,25 @@ watch(() => props.tripDistance, (newDist) => {
   }
 });
 
+watch(() => props.carLocation, (newLoc) => {
+  if (!props.tripActive && newLoc && newLoc.lat != null && newLoc.lon != null) {
+    if (carMarker) {
+      carMarker.setLatLng([newLoc.lat, newLoc.lon]);
+      map.value.panTo([newLoc.lat, newLoc.lon]);
+    }
+  }
+}, { deep: true });
+
 onMounted(() => {
   if (mapContainer.value && !map.value) {
+    const initialCoords = (props.carLocation && props.carLocation.lat != null && props.carLocation.lon != null)
+      ? [props.carLocation.lat, props.carLocation.lon]
+      : DEFAULT_COORDS;
+
     map.value = L.map(mapContainer.value, {
       zoomControl: false,
       attributionControl: false
-    }).setView([-23.55052, -46.633308], 15);
+    }).setView(initialCoords, 15);
 
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
       maxZoom: 19
@@ -235,7 +293,7 @@ onMounted(() => {
       iconAnchor: [14, 14]
     });
 
-    carMarker = L.marker([-23.55052, -46.633308], { icon: carIcon }).addTo(map.value);
+    carMarker = L.marker(initialCoords, { icon: carIcon }).addTo(map.value);
 
     resizeObserver = new ResizeObserver(() => {
       if (map.value) {
@@ -327,47 +385,14 @@ onUnmounted(() => {
       <div class="grid-item item-ranking" style="justify-content: flex-start; overflow: hidden; padding-bottom: 8px;">
         <span class="widget-label">RANKING DE CORRIDAS</span>
         <div class="ranking-layout no-scroll" style="flex: 1; overflow-y: auto; margin-top: 4px;">
-          <div 
+          <RankingRow 
             v-for="rank in activeRankingList" 
             :key="rank.userId" 
-            @click="$emit('open-public-profile', rank.userId)"
-            :class="['ranking-row', rank.active ? 'active-user' : '']"
-          >
-            <!-- Left side: Position + Avatar + Name & Tags -->
-            <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;">
-              <!-- Position -->
-              <span style="font-weight: 800; font-size: 13px; color: #64748b; width: 28px; text-align: center; flex-shrink: 0;">{{ rank.pos }}º</span>
-              
-              <!-- Avatar -->
-              <div style="width: 34px; height: 34px; border-radius: 10px; overflow: hidden; background: #e2e8f0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1.5px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                <img v-if="rank.avatarUrl" :src="getFullUrl(rank.avatarUrl)" style="width: 100%; height: 100%; object-fit: cover;" />
-                <span v-else style="color: #94a3b8; font-size: 14px;">👤</span>
-              </div>
-
-              <!-- Name and Tags -->
-              <div style="display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1;">
-                <span style="font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1;">{{ rank.name }}</span>
-                <!-- Tags -->
-                <div v-if="rank.customTags && rank.customTags.length > 0" style="display: flex; gap: 4px; flex-shrink: 0; align-items: center;">
-                  <span 
-                    v-for="(tag, idx) in rank.customTags.slice(0, 1)" 
-                    :key="idx" 
-                    :style="{ backgroundColor: tag.color + '15', color: tag.color, borderColor: tag.color + '30' }" 
-                    style="padding: 2px 6px; border-radius: 6px; font-size: 9px; font-weight: 700; border: 0.5px solid; white-space: nowrap; line-height: 1;"
-                  >
-                    {{ tag.text }}
-                  </span>
-                  <span v-if="rank.customTags.length > 1" style="font-size: 9px; color: #94a3b8; font-weight: bold; line-height: 1;">+{{ rank.customTags.length - 1 }}</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Right side: Total Points -->
-            <div style="display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; margin-left: 8px; line-height: 1.1;">
-              <span style="font-size: 14px; font-weight: 800; color: #10b981;">{{ rank.pts.toLocaleString('pt-BR') }}</span>
-              <span style="font-size: 10px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">pts</span>
-            </div>
-          </div>
+            :rank="rank"
+            :get-full-url="getFullUrl"
+            :is-compact="true"
+            @open-public-profile="$emit('open-public-profile', $event)"
+          />
         </div>
       </div>
     </div>

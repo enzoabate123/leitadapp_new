@@ -1,5 +1,5 @@
 <script setup>
-import { defineProps, defineEmits } from 'vue';
+import { ref, onMounted } from 'vue';
 
 const props = defineProps({
   API_URL: {
@@ -27,6 +27,57 @@ const emit = defineEmits([
   'activate-music-track',
   'delete-music-track'
 ]);
+
+const localSettings = ref({
+  autoplay: false,
+  shuffle: false
+});
+const savingSettings = ref(false);
+const settingsSaved = ref(false);
+
+const fetchSettings = async () => {
+  try {
+    const token = localStorage.getItem('token');
+    const headers = { 'Authorization': `Bearer ${token}` };
+    const res = await fetch(`${props.API_URL}/api/admin/music/settings`, { headers });
+    if (res.ok) {
+      localSettings.value = await res.json();
+    }
+  } catch (err) {
+    console.error('Error fetching music settings:', err);
+  }
+};
+
+const updateSettings = async () => {
+  savingSettings.value = true;
+  settingsSaved.value = false;
+  try {
+    const token = localStorage.getItem('token');
+    const headers = {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    };
+    const res = await fetch(`${props.API_URL}/api/admin/music/settings`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(localSettings.value)
+    });
+    if (res.ok) {
+      settingsSaved.value = true;
+      setTimeout(() => {
+        settingsSaved.value = false;
+      }, 2000);
+    }
+  } catch (err) {
+    console.error('Error updating music settings:', err);
+  } finally {
+    savingSettings.value = false;
+  }
+};
+
+onMounted(() => {
+  fetchSettings();
+});
 </script>
 
 <template>
@@ -35,6 +86,23 @@ const emit = defineEmits([
       <div>
         <h3>Gerenciador de Músicas de Fundo</h3>
         <p>Adicione novas faixas e escolha qual música tocará para todos os usuários.</p>
+      </div>
+    </div>
+
+    <!-- Global Playback Settings Card -->
+    <div class="xp-card" style="margin-bottom: 20px;">
+      <header class="xp-card-header-gray">🎛️ Configurações Globais de Reprodução</header>
+      <div class="xp-card-body" style="display: flex; gap: 20px; align-items: center; padding: 12px 15px;">
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: bold; color: #003399; font-family: Tahoma, sans-serif; font-size: 12px;">
+          <input type="checkbox" v-model="localSettings.autoplay" @change="updateSettings" />
+          🔁 Toque Automático (Autoplay)
+        </label>
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: bold; color: #003399; font-family: Tahoma, sans-serif; font-size: 12px;">
+          <input type="checkbox" v-model="localSettings.shuffle" @change="updateSettings" />
+          🔀 Modo Aleatório (Shuffle)
+        </label>
+        <span v-if="savingSettings" style="font-size: 11px; color: #0284c7; font-family: Tahoma, sans-serif;">⏳ Salvando...</span>
+        <span v-else-if="settingsSaved" style="font-size: 11px; color: #16a34a; font-family: Tahoma, sans-serif;">✅ Configurações salvas!</span>
       </div>
     </div>
 

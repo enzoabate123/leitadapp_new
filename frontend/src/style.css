@@ -1,3 +1,33 @@
+:root {
+  /* Cores Principais */
+  --color-text-primary: #1e293b;
+  --color-text-secondary: #94a3b8;
+  --color-text-muted: #64748b;
+  --color-accent: #3b82f6;
+  --color-surface: #ffffff;
+  --color-bg-subtle: #f1f5f9;
+  --color-bg-fallback: #e2e8f0;
+  
+  /* Cores de Destaque */
+  --color-xp-base: #ece9d8;
+  --color-xp-blue: #0054e3;
+  --color-xp-active: #0058e3;
+  --color-emerald-500: #10b981;
+  --color-purple-500: #9333ea;
+  --color-indigo-500: #6366f1;
+
+  /* Bordas e Sombras */
+  --radius-pill: 9999px;
+  --radius-lg: 28px;
+  --radius-xl: 36px;
+  --radius-md: 16px;
+  --radius-sm: 12px;
+
+  /* Transições e Animações */
+  --transition-default: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-fast: all 0.15s ease;
+}
+
 /* Reset básico de alta performance */
 *, *::before, *::after {
   box-sizing: border-box;
@@ -53,10 +83,10 @@ body {
 
 /* Sidebar Navigation */
 .sidebar {
-  background: #ffffff;
+  background: var(--color-surface);
   backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.65);
-  border-radius: 28px;
+  border-radius: var(--radius-lg);
   padding: 12px 10px;
   display: flex;
   flex-direction: column;
@@ -70,12 +100,12 @@ body {
 .nav-btn {
   width: 44px;
   height: 44px;
-  border-radius: 16px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.22s cubic-bezier(.4,0,.2,1);
+  transition: var(--transition-default);
   border: 1.5px solid transparent;
   background: transparent;
   outline: none;
@@ -213,117 +243,6 @@ body {
   margin-top: 6px;
   text-align: right;
 }
-
-/* Home Page Stats Cards */
-.home-stat {
-  background: #ffffff;
-  border-radius: 24px;
-  border: 1px solid rgba(255, 255, 255, 0.9);
-  padding: 20px;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  transition: all 0.25s;
-  cursor: pointer;
-}
-.home-stat:hover {
-  background: white;
-  transform: translateY(-2px);
-  box-shadow: 0 12px 28px rgba(0,0,0,0.07);
-}
-.stat-icon-wrapper {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-.bg-blue-100 { background-color: #dbeafe; color: #2563eb; }
-.bg-emerald-100 { background-color: #d1fae5; color: #059669; }
-.bg-purple-100 { background-color: #f3e8ff; color: #9333ea; }
-.bg-indigo-100 { background-color: #e0e7ff; color: #4f46e5; }
-.bg-orange-100 { background-color: #ffedd5; color: #ea580c; }
-.bg-red-100 { background-color: #fee2e2; color: #ef4444; }
-
-.stat-icon-wrapper svg {
-  width: 20px;
-  height: 20px;
-}
-.stat-value {
-  font-size: 18px;
-  font-weight: 700;
-  color: #1e293b;
-}
-.stat-value-unit {
-  font-size: 12px;
-  font-weight: 500;
-  color: #94a3b8;
-  margin-left: 4px;
-}
-.stat-subtitle {
-  font-size: 11px;
-  color: #94a3b8;
-  font-weight: 500;
-}
-
-/* Recent Activity Feed */
-.feed-header {
-  font-size: 12px;
-  font-weight: 700;
-  color: #94a3b8;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-}
-.feed-container {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  flex: 1;
-}
-.activity-row {
-  background: #ffffff;
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.85);
-  padding: 12px 16px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.activity-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  flex-shrink: 0;
-}
-.activity-info {
-  flex: 1;
-  min-width: 0;
-}
-.activity-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #334155;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.activity-time {
-  font-size: 11px;
-  color: #94a3b8;
-}
-.activity-xp {
-  font-size: 12px;
-  font-weight: 700;
-  flex-shrink: 0;
-}
-.text-emerald-500 { color: #10b981; }
-.text-purple-500 { color: #a855f7; }
 
 /* Profile Card Styling */
 .profile-header {
@@ -479,6 +398,12 @@ body {
   display: flex;
   gap: 12px;
 }
+.public-highlights-grid {
+  display: grid !important;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+  width: 100%;
+}
 .badge-item {
   background: #ffffff;
   border-radius: 20px;
@@ -498,25 +423,6 @@ body {
 .text-yellow-500 { color: #f59e0b; }
 .text-blue-500 { color: #3b82f6; }
 .text-indigo-500 { color: #6366f1; }
-
-.driver-profile-right {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0.3;
-}
-.floating-circle {
-  width: 160px;
-  height: 160px;
-  background: linear-gradient(to top right, #dbeafe, transparent);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  animation: subtle-float 3.5s ease-in-out infinite;
-}
-.floating-circle svg { width: 96px; height: 96px; color: #bfdbfe; }
 
 /* Achievements Layout */
 .achievements-header {
@@ -697,31 +603,7 @@ body {
 .toggle.on .toggle-knob { left: 23px; }
 .toggle.off .toggle-knob { left: 3px; }
 
-/* Footers */
-.glass-footer {
-  display: flex;
-  justify-content: center;
-  margin-top: auto;
-}
-.footer-tag {
-  padding: 6px 20px;
-  background-color: rgba(255, 255, 255, 0.3);
-  border-radius: 9999px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  font-size: 10px;
-  font-weight: 700;
-  color: #94a3b8;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-}
-
 /* Animations */
-@keyframes subtle-float {
-  0%,100% { transform: translateY(0); }
-  50% { transform: translateY(-5px); }
-}
-.float { animation: subtle-float 3.5s ease-in-out infinite; }
-
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
@@ -794,10 +676,21 @@ button:hover .cog-icon {
   .profile-identity .avatar-wrapper {
     align-self: center !important;
   }
-  .profile-identity div[style*="background: rgba(0, 0, 0, 0.45)"] {
+  .profile-details-box {
     align-items: center !important;
-    width: 100% !important;
+    width: auto !important;
+    max-width: 100% !important;
     box-sizing: border-box !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+  .profile-details-box .username-row,
+  .profile-details-box .id-badge-row,
+  .profile-tags-wrapper {
+    justify-content: center !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
   }
   
   /* Ajustes gerais de layout de perfil */
@@ -811,6 +704,24 @@ button:hover .cog-icon {
   }
   .profile-banner-container::after {
     border-radius: 24px 24px 0 0 !important;
+  }
+  
+  /* Estilos específicos da visão modal do perfil público no celular */
+  .public-profile-modal {
+    padding: 16px !important;
+    border-radius: 24px !important;
+    isolation: isolate !important;
+    transform: translateZ(0) !important;
+    overflow: hidden !important;
+  }
+  .public-profile-modal .profile-banner-container {
+    margin: -16px -16px 0 -16px !important;
+    border-radius: 24px 24px 0 0 !important;
+    isolation: isolate !important;
+    transform: translateZ(0) !important;
+  }
+  .public-highlights-grid {
+    grid-template-columns: repeat(4, 1fr) !important;
   }
   
   /* Seção de métricas de estatísticas do perfil */
@@ -844,4 +755,85 @@ button:hover .cog-icon {
   .metric-card-val-unit {
     font-size: 8px !important;
   }
+  .public-highlights-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+}
+
+/* =============================================
+   Ranking Activity Row Styles
+   (Used by RankingRow.vue full layout)
+   ============================================= */
+.activity-row {
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+}
+.activity-row.active-user {
+  background: rgba(59, 130, 246, 0.06);
+  border-color: rgba(59, 130, 246, 0.2);
+}
+.activity-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.activity-info {
+  flex: 1;
+  min-width: 0;
+}
+.activity-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #334155;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.activity-time {
+  font-size: 11px;
+  color: #94a3b8;
+}
+.activity-xp {
+  font-size: 13px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+.text-emerald-500 { color: #10b981; }
+.text-purple-500  { color: #a855f7; }
+
+/* =============================================
+   Settings Tab Container & Profile Card
+   (Used by SettingsTab.vue)
+   ============================================= */
+.settings-tab-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+  padding: 4px 4px 24px;
+  gap: 24px;
+}
+.profile-card {
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-radius: 24px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06),
+              inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  overflow: hidden;
+  flex: 1;
+}
+.profile-card.no-hover {
+  cursor: default;
 }

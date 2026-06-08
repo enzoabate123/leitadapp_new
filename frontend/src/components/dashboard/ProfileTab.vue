@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import UserAvatar from './UserAvatar.vue';
 
 const props = defineProps({
   username: String,
@@ -52,6 +53,8 @@ let routeLine = null;
 let startMarker = null;
 let endMarker = null;
 
+import { DEFAULT_COORDS } from '../../utils/geo';
+
 async function renderLongestTripRoute() {
   await nextTick();
   if (!props.longestTrip || !profileMapContainer.value) return;
@@ -72,7 +75,7 @@ async function renderLongestTripRoute() {
     boxZoom: false,
     touchZoom: false,
     keyboard: false
-  }).setView([-23.55052, -46.633308], 12);
+  }).setView(DEFAULT_COORDS, 12);
 
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
     maxZoom: 19
@@ -120,23 +123,28 @@ async function renderLongestTripRoute() {
 
   profileMap.value.fitBounds(pathPoints, { padding: [20, 20] });
 }
+function getRarityColor(glowColor) {
+  const colorMap = {
+    cyan: '#06b6d4',      // ciano/cyan
+    emerald: '#10b981',   // esmeralda
+    purple: '#a855f7',    // roxo
+    gold: '#f59e0b',      // ouro/gold
+    yellow: '#eab308',    // amarelo
+    rose: '#ec4899',      // rosa/rose
+    green: '#22c55e',     // verde
+  };
+  return colorMap[glowColor] || '#3b82f6'; // fallback to blue
+}
+
 function getBadgeStyle(ach) {
+  const color = getRarityColor(ach.glowColor);
   const isWinner = ach.firstWinner && String(ach.firstWinner.id) === String(props.userId);
+  
   if (isWinner) {
     return {
-      border: '1.5px solid #fbbf24',
-      background: 'linear-gradient(to bottom, #fffbeb, #fef3c7)',
-      boxShadow: '0 4px 12px rgba(251, 191, 36, 0.15)',
-      cursor: 'pointer',
-      width: '100%',
-      height: '88px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderRadius: '12px'
-    };
-  } else {
-    return {
+      border: `2px solid ${color}`,
+      background: `linear-gradient(135deg, ${color}15, ${color}28)`,
+      boxShadow: `0 4px 12px ${color}30, 0 0 0 1.5px #fbbf24`, // gold ring for first winner
       cursor: 'pointer',
       width: '100%',
       height: '88px',
@@ -144,8 +152,21 @@ function getBadgeStyle(ach) {
       alignItems: 'center',
       justifyContent: 'center',
       borderRadius: '12px',
-      border: '1px solid rgba(0,0,0,0.05)',
-      background: 'rgba(255,255,255,0.7)'
+      position: 'relative'
+    };
+  } else {
+    return {
+      border: `2px solid ${color}`,
+      background: `linear-gradient(135deg, ${color}12, ${color}22)`,
+      boxShadow: `0 4px 12px ${color}25`,
+      cursor: 'pointer',
+      width: '100%',
+      height: '88px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: '12px',
+      position: 'relative'
     };
   }
 }
@@ -169,21 +190,17 @@ onUnmounted(() => {
 <template>
   <div style="position: relative; height: 100%; display: flex; flex-direction: column;">
     <!-- Banner & Profile Identity (covers the top 33% of the glass container) -->
-    <div class="profile-banner-container" style="position: relative; height: 33%; min-height: 180px; margin-top: -28px; margin-left: -28px; margin-right: -28px; border-radius: 36px 36px 0 0; overflow: hidden; display: flex; align-items: flex-end; justify-content: flex-start; padding: 20px;">
-      <!-- Profile Banner Background -->
-      <div 
-        v-if="bannerUrl" 
-        style="position: absolute; inset: 0; background-size: cover; z-index: 0; pointer-events: none;"
-        :style="{ backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.1) 60%, rgba(0,0,0,0.85) 100%), url(${getFullUrl(bannerUrl)})`, backgroundPositionX: 'center', backgroundPositionY: bannerPositionY }"
-      ></div>
-
+    <div 
+      class="profile-banner-container" 
+      style="position: relative; height: 33%; min-height: 180px; margin-top: -28px; margin-left: -28px; margin-right: -28px; border-radius: 36px 36px 0 0; overflow: hidden; display: flex; align-items: flex-end; justify-content: flex-start; padding: 20px; background-size: cover; background-position: center;"
+      :style="bannerUrl ? { backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.1) 60%, rgba(0,0,0,0.85) 100%), url(${getFullUrl(bannerUrl)})`, backgroundPositionY: bannerPositionY } : { backgroundColor: '#475569', backgroundImage: 'linear-gradient(135deg, #1e293b, #475569)' }"
+    >
       <!-- Banner edit overlay (only when editing) -->
       <div 
         v-if="isEditingProfile" 
         @mousedown="$emit('start-banner-drag', $event)"
-        style="position: absolute; inset: 0; background: rgba(147, 51, 234, 0.15); border: 2px dashed #9333ea; border-radius: 36px 36px 0 0; color: #ffffff; cursor: ns-resize; z-index: 2; transition: background 0.2s;"
-        onmouseover="this.style.background='rgba(147, 51, 234, 0.25)'"
-        onmouseout="this.style.background='rgba(147, 51, 234, 0.15)'"
+        class="banner-drag-overlay"
+        style="position: absolute; inset: 0; border: 2px dashed #9333ea; border-radius: 36px 36px 0 0; color: #ffffff; cursor: ns-resize; z-index: 2; transition: background 0.2s;"
       >
         <div style="position: absolute; top: 16px; left: 50%; transform: translateX(-50%); pointer-events: none; font-weight: 800; font-size: 13px; text-shadow: 0 1px 3px rgba(0,0,0,0.8); display: flex; align-items: center; gap: 6px;">
           ↕️ Clique e arraste em qualquer área livre para reposicionar
@@ -196,29 +213,26 @@ onUnmounted(() => {
       <!-- Avatar & Name placed in the bottom-left corner of the banner -->
       <div class="profile-identity" style="position: relative; z-index: 3; align-items: flex-end; gap: 16px;">
         <div class="avatar-wrapper" :style="isEditingProfile ? { cursor: 'pointer' } : {}" @click="isEditingProfile ? $emit('trigger-avatar-upload') : null">
-          <div class="avatar-box" style="position: relative; overflow: hidden; border: none; border-radius: 24px; width: 84px; height: 84px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); background: #f1f5f9;">
-            <img v-if="avatarUrl" :src="getFullUrl(avatarUrl)" style="width: 100%; height: 100%; object-fit: cover;" />
-            <svg v-else fill="currentColor" viewBox="0 0 24 24" style="width: 40px; height: 40px; color: #94a3b8;">
-              <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-            </svg>
-            <div v-if="isEditingProfile" style="position: absolute; inset: 0; background: rgba(0, 0, 0, 0.4); display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; font-size: 10px; font-weight: bold;">
-              <span>📷</span>
-              <span>Alterar</span>
-            </div>
-          </div>
+          <UserAvatar 
+            :avatar-url="avatarUrl" 
+            :get-full-url="getFullUrl" 
+            size="84px" 
+            border-radius="24px" 
+            icon-size="40px" 
+            :is-editable="isEditingProfile"
+            style="box-shadow: 0 4px 10px rgba(0,0,0,0.3);"
+          />
         </div>
 
         <!-- Details Container (semi-transparent black overlay box) -->
-        <div style="background: rgba(0, 0, 0, 0.45); padding: 8px 12px; border-radius: 12px; backdrop-filter: blur(8px); display: flex; flex-direction: column; gap: 4px; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 2px;">
+        <div class="profile-details-box" style="background: rgba(0, 0, 0, 0.45); padding: 8px 12px; border-radius: 12px; backdrop-filter: blur(8px); display: flex; flex-direction: column; gap: 4px; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 2px;">
           <div class="username-row" style="margin: 0;">
-            <h1 :style="{ color: profileTextColor || '#ffffff' }" style="font-size: 18px; font-weight: 800; text-shadow: 0 1px 3px rgba(0,0,0,0.5); margin: 0; line-height: 1.2;">{{ username }}#{{ userTag }}</h1>
+            <h1 :style="{ color: profileTextColor || '#ffffff' }" style="font-size: 18px; font-weight: 800; text-shadow: 0 1px 3px rgba(0,0,0,0.5); margin: 0; line-height: 1.2;">{{ username }}</h1>
           </div>
           <div class="id-badge-row" style="color: rgba(255,255,255,0.85); font-size: 10px; margin: 0; display: flex; gap: 6px; align-items: center; line-height: 1;">
             <span class="id-badge" style="background: rgba(255,255,255,0.2); padding: 1px 5px; border-radius: 4px;">ID: {{ userId }}</span>
-            <span>•</span>
-            <span>Out 2023</span>
           </div>
-          <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 2px;">
+          <div class="profile-tags-wrapper" style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 2px;">
             <div 
               v-for="(tag, idx) in customTags" 
               :key="idx" 
@@ -247,8 +261,7 @@ onUnmounted(() => {
         :title="isEditingProfile ? 'Salvar Perfil' : 'Editar Perfil'"
         :style="{ background: isEditingProfile ? '#10b981' : 'rgba(255,255,255,0.25)', border: isEditingProfile ? '1.5px solid #10b981' : '1.5px solid rgba(255,255,255,0.45)' }"
         style="position: absolute; top: 16px; right: 16px; width: 36px; height: 36px; border-radius: 50%; color: white; font-size: 16px; display: flex; align-items: center; justify-content: center; cursor: pointer; backdrop-filter: blur(8px); z-index: 10; transition: all 0.25s; box-shadow: 0 4px 12px rgba(0,0,0,0.15); outline: none;"
-        onmouseover="this.style.transform='scale(1.08)'; this.style.boxShadow='0 6px 16px rgba(0,0,0,0.25)';"
-        onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)';"
+        class="banner-btn"
       >
         <span v-if="isEditingProfile" style="line-height: 1;">💾</span>
         <span v-else class="cog-icon" style="line-height: 1;">⚙️</span>
@@ -258,8 +271,7 @@ onUnmounted(() => {
         @click.stop="$emit('go-back-to-own-profile')" 
         title="Voltar ao meu Perfil"
         style="position: absolute; top: 16px; right: 16px; width: 36px; height: 36px; border-radius: 50%; color: white; font-size: 16px; display: flex; align-items: center; justify-content: center; cursor: pointer; backdrop-filter: blur(8px); z-index: 10; transition: all 0.25s; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border: 1.5px solid rgba(255,255,255,0.45); background: rgba(255,255,255,0.25); outline: none;"
-        onmouseover="this.style.transform='scale(1.08)'; this.style.boxShadow='0 6px 16px rgba(0,0,0,0.25)';"
-        onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)';"
+        class="banner-btn"
       >
         🔙
       </button>
@@ -324,7 +336,7 @@ onUnmounted(() => {
                   @mouseleave="$emit('reset-trophy-hover', $event)"
                   :style="getBadgeStyle(ach)"
                 >
-                  <div :style="{ color: ach.glowColor || '#eab308' }" style="font-size: 2.1rem; position: relative; pointer-events: none; display: flex; align-items: center; justify-content: center;">
+                  <div :style="{ color: getRarityColor(ach.glowColor) }" style="font-size: 2.1rem; position: relative; pointer-events: none; display: flex; align-items: center; justify-content: center;">
                     <span v-if="ach.firstWinner && String(ach.firstWinner.id) === String(userId)" style="position: absolute; top: -8px; right: -8px; font-size: 11px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2)); z-index: 2;">👑</span>
                     {{ ach.emoji || '🏆' }}
                   </div>
@@ -411,3 +423,16 @@ onUnmounted(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.banner-drag-overlay {
+  background: rgba(147, 51, 234, 0.15);
+}
+.banner-drag-overlay:hover {
+  background: rgba(147, 51, 234, 0.25) !important;
+}
+.banner-btn:hover {
+  transform: scale(1.08);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.25) !important;
+}
+</style>
