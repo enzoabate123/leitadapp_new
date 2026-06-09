@@ -469,7 +469,7 @@ onUnmounted(() => {
       <div 
         v-if="activeTrack && showMusicWidget" 
         class="music-widget" 
-        :class="{ expanded: isExpanded, dragging: isDraggingMusic }" 
+        :class="{ expanded: isExpanded, dragging: isDraggingMusic, 'spotify-active': activeTrack.isSpotify }" 
         @mousedown="onMusicDragStart"
         @touchstart="onMusicDragStart"
         @click="handleWidgetClick"
@@ -484,11 +484,8 @@ onUnmounted(() => {
             <div v-if="!activeTrack.coverUrl" class="cover-fallback">🎵</div>
           </div>
           <div class="track-info" style="max-width: 120px; overflow: hidden;">
-            <div class="track-status">
-              <span v-if="activeTrack.isSpotify" style="color: #1db954; font-weight: bold; display: flex; align-items: center; gap: 4px; font-size: 9px;">
-                SPOTIFY 🟢 {{ isPlaying ? 'TOCANDO' : 'PAUSADO' }}
-              </span>
-              <span v-else>{{ isPlaying ? 'TOCANDO' : 'PAUSADO' }}</span>
+            <div class="track-status" :style="activeTrack.isSpotify ? { color: '#1db954', fontWeight: 'bold', fontSize: '9px' } : {}">
+              {{ isPlaying ? 'TOCANDO' : 'PAUSADO' }}
             </div>
             <div class="track-title" :title="activeTrack.title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: bold;">
               {{ activeTrack.title }}
@@ -554,6 +551,19 @@ onUnmounted(() => {
               background 0.3s, 
               transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), 
               box-shadow 0.3s;
+}
+
+.music-widget.spotify-active {
+  background: rgba(29, 185, 84, 0.18);
+  border-color: rgba(29, 185, 84, 0.45);
+  box-shadow: 0 8px 32px rgba(29, 185, 84, 0.12), 
+              inset 0 1px 1px rgba(255, 255, 255, 0.3);
+}
+
+.music-widget.spotify-active:hover {
+  background: rgba(29, 185, 84, 0.28);
+  box-shadow: 0 12px 40px rgba(29, 185, 84, 0.2), 
+              inset 0 1px 1px rgba(255, 255, 255, 0.4);
 }
 
 .music-widget.dragging {
