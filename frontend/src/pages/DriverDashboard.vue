@@ -99,6 +99,7 @@ async function fetchMe() {
       }
       applyBackground(appBgType.value, appCustomBgUrl.value);
     }
+    fetchCustomLocations();
     return true;
   } catch (e) {
     return false;
@@ -626,7 +627,19 @@ function handleAddressInput(query, field, index = null) {
     activeSuggestions.value = { field: null, index: null, list: [] };
     return;
   }
-  
+
+  // 1. Filter local custom locations
+  const normalizedQuery = query.toLowerCase().trim();
+  const matchedCustom = customLocationsList.value.filter(loc => 
+    loc.name.toLowerCase().includes(normalizedQuery) || 
+    (loc.address && loc.address.toLowerCase().includes(normalizedQuery))
+  ).map(loc => ({
+    display_name: `⭐ ${loc.name} (${loc.address || 'Sem endereço'})`,
+    lat: loc.latitude,
+    lon: loc.longitude,
+    isCustom: true
+  }));
+
   searchTimeout = setTimeout(async () => {
     try {
       const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(query)}`;
@@ -637,17 +650,34 @@ function handleAddressInput(query, field, index = null) {
       });
       if (!res.ok) throw new Error('Nominatim suggestions fetch failed');
       const data = await res.json();
+      const nominatimSuggestions = data.map(item => ({
+        display_name: item.display_name,
+        lat: parseFloat(item.lat),
+        lon: parseFloat(item.lon)
+      }));
+
+      // Combine custom locations first, then Nominatim suggestions, and deduplicate
+      const combined = [...matchedCustom];
+      for (const ns of nominatimSuggestions) {
+        if (!combined.some(c => c.lat === ns.lat && c.lon === ns.lon)) {
+          combined.push(ns);
+        }
+      }
+
       activeSuggestions.value = {
         field,
         index,
-        list: data.map(item => ({
-          display_name: item.display_name,
-          lat: parseFloat(item.lat),
-          lon: parseFloat(item.lon)
-        }))
+        list: combined.slice(0, 6)
       };
     } catch (err) {
       console.error('Error fetching suggestions:', err);
+      if (matchedCustom.length > 0) {
+        activeSuggestions.value = {
+          field,
+          index,
+          list: matchedCustom
+        };
+      }
     }
   }, 400);
 }
@@ -749,8 +779,42 @@ const startTripForm = ref({
 });
 const savedPresets = ref([]);
 const newPresetName = ref('');
+const customLocationsList = ref([]);
 
+async function fetchCustomLocations() {
+  if (!token.value) return;
+  try {
+    customLocationsList.value = await apiFetch('/api/custom-locations');
+  } catch (err) {
+    console.error('Error fetching custom locations:', err);
+  }
+}
 
+async function addCustomLocation(loc) {
+  try {
+    await apiFetch('/api/custom-locations', {
+      method: 'POST',
+      body: JSON.stringify(loc)
+    });
+    showToast('Localização personalizada adicionada!');
+    await fetchCustomLocations();
+  } catch (err) {
+    showToast('Erro ao salvar localização');
+  }
+}
+
+async function deleteCustomLocation(id) {
+  if (!confirm('Deseja excluir esta localização personalizada?')) return;
+  try {
+    await apiFetch(`/api/custom-locations/${id}`, {
+      method: 'DELETE'
+    });
+    showToast('Localização personalizada removida');
+    await fetchCustomLocations();
+  } catch (err) {
+    showToast('Erro ao remover localização');
+  }
+}
 
 function loadPresets() {
   const data = localStorage.getItem('commute-presets');
@@ -766,7 +830,9 @@ function loadPresets() {
         id: 'preset-1',
         name: 'Trabalho Diário',
         departure: 'Residência Enzo',
+        departureCoords: null,
         destination: 'Sede Commute Quest',
+        destinationCoords: null,
         stops: [],
         passengers: [
           { name: 'Marina', role: 'Co-piloto 🧭', status: '⚡ 120 Pontos' },
@@ -787,7 +853,9 @@ function saveCurrentAsPreset() {
     id: 'preset-' + Date.now(),
     name: newPresetName.value.trim(),
     departure: startTripForm.value.departure,
+    departureCoords: startTripForm.value.departureCoords,
     destination: startTripForm.value.destination,
+    destinationCoords: startTripForm.value.destinationCoords,
     stops: JSON.parse(JSON.stringify(startTripForm.value.stops || [])),
     passengers: [...startTripForm.value.passengers]
   };
@@ -799,9 +867,9 @@ function saveCurrentAsPreset() {
 
 function selectPreset(preset) {
   startTripForm.value.departure = preset.departure;
-  startTripForm.value.departureCoords = null;
+  startTripForm.value.departureCoords = preset.departureCoords || null;
   startTripForm.value.destination = preset.destination;
-  startTripForm.value.destinationCoords = null;
+  startTripForm.value.destinationCoords = preset.destinationCoords || null;
   startTripForm.value.stops = preset.stops ? JSON.parse(JSON.stringify(preset.stops)) : [];
   startTripForm.value.passengers = [...preset.passengers];
   showToast(`Preset "${preset.name}" carregado!`);
@@ -2080,6 +2148,7 @@ modalsToWatch.forEach(m => {
           v-model:appBgType="appBgType"
           v-model:appCustomBgUrl="appCustomBgUrl"
           :defaultBackgrounds="defaultBackgrounds"
+          :customLocations="customLocationsList"
           @toggle-setting="toggleSetting"
           @update-volume="updateVolume"
           @change-bg="changeBg"
@@ -2089,6 +2158,8 @@ modalsToWatch.forEach(m => {
           @connect-spotify="connectSpotify"
           @disconnect-spotify="disconnectSpotify"
           @logout="handleLogout"
+          @add-custom-location="addCustomLocation"
+          @delete-custom-location="deleteCustomLocation"
         />
       </div>
     </section>

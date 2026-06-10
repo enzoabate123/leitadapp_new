@@ -781,6 +781,88 @@ fastify.get('/api/users/:id/trips', { preHandler: authenticate }, async (request
   return formattedTrips;
 });
 
+// GET /api/custom-locations
+fastify.get('/api/custom-locations', { preHandler: authenticate }, async (request, reply) => {
+  const userId = request.userId;
+  return prisma.customLocation.findMany({
+    where: { userId },
+    orderBy: { createdAt: 'desc' }
+  });
+});
+
+// POST /api/custom-locations
+fastify.post('/api/custom-locations', { preHandler: authenticate }, async (request, reply) => {
+  const userId = request.userId;
+  let { name, address, latitude, longitude } = request.body || {};
+
+  if (!name || !name.trim()) {
+    return reply.status(400).send({ error: 'O nome da localização é obrigatório' });
+  }
+
+  name = name.trim();
+
+  // If address is provided but coordinates are null, geocode using Nominatim
+  if (address && address.trim() && (latitude == null || longitude == null)) {
+    address = address.trim();
+    try {
+      const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(address)}`, {
+        headers: { 'User-Agent': 'CommuteQuestDashboard/1.0' }
+      });
+      if (geoRes.ok) {
+        const geoData = await geoRes.json();
+        if (geoData && geoData.length > 0) {
+          latitude = parseFloat(geoData[0].lat);
+          longitude = parseFloat(geoData[0].lon);
+        }
+      }
+    } catch (e) {
+      console.error('Error geocoding custom location in backend:', e);
+    }
+  }
+
+  // If coordinates are provided but no address, set default description
+  if (!address && latitude != null && longitude != null) {
+    address = `Coordenadas: ${latitude}, ${longitude}`;
+  }
+
+  const customLoc = await prisma.customLocation.create({
+    data: {
+      userId,
+      name,
+      address: address ? address.trim() : null,
+      latitude: latitude != null ? parseFloat(latitude) : null,
+      longitude: longitude != null ? parseFloat(longitude) : null
+    }
+  });
+
+  return customLoc;
+});
+
+// DELETE /api/custom-locations/:id
+fastify.delete('/api/custom-locations/:id', { preHandler: authenticate }, async (request, reply) => {
+  const userId = request.userId;
+  const id = parseInt(request.params.id, 10);
+
+  if (isNaN(id)) {
+    return reply.status(400).send({ error: 'ID inválido' });
+  }
+
+  const existing = await prisma.customLocation.findUnique({
+    where: { id }
+  });
+
+  if (!existing || existing.userId !== userId) {
+    return reply.status(404).send({ error: 'Localização não encontrada' });
+  }
+
+  await prisma.customLocation.delete({
+    where: { id }
+  });
+
+  return { success: true };
+});
+
+
 
 // POST /api/trips
 fastify.post('/api/trips', { preHandler: authenticate }, async (request, reply) => {

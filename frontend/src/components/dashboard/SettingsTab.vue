@@ -62,6 +62,10 @@ const props = defineProps({
   spotifyConnected: {
     type: Boolean,
     default: false
+  },
+  customLocations: {
+    type: Array,
+    default: () => []
   }
 });
 
@@ -78,7 +82,9 @@ const emit = defineEmits([
   'update:sfxVolume',
   'update:musicVolume',
   'update:appBgType',
-  'update:appCustomBgUrl'
+  'update:appCustomBgUrl',
+  'add-custom-location',
+  'delete-custom-location'
 ]);
 
 function onVolumeInput(type, event) {
@@ -244,6 +250,39 @@ function getStatusStyle(status) {
   if (status === 'pending') return { backgroundColor: '#fef3c7', color: '#d97706' };
   if (status === 'approved') return { backgroundColor: '#dcfce7', color: '#15803d' };
   return { backgroundColor: '#fee2e2', color: '#b91c1c' };
+}
+
+const newLocForm = ref({
+  name: '',
+  inputType: 'address',
+  address: '',
+  latitude: '',
+  longitude: ''
+});
+
+function submitAddLocation() {
+  if (!newLocForm.value.name.trim()) {
+    alert('O nome da localização é obrigatório.');
+    return;
+  }
+  
+  const payload = {
+    name: newLocForm.value.name.trim(),
+    address: newLocForm.value.inputType === 'address' ? newLocForm.value.address.trim() : '',
+    latitude: newLocForm.value.inputType === 'coords' && newLocForm.value.latitude ? parseFloat(newLocForm.value.latitude) : null,
+    longitude: newLocForm.value.inputType === 'coords' && newLocForm.value.longitude ? parseFloat(newLocForm.value.longitude) : null
+  };
+  
+  emit('add-custom-location', payload);
+  
+  // Reset form
+  newLocForm.value = {
+    name: '',
+    inputType: 'address',
+    address: '',
+    latitude: '',
+    longitude: ''
+  };
 }
 </script>
 
@@ -562,6 +601,77 @@ function getStatusStyle(status) {
             
             <div v-else class="settings-row" style="justify-content: center; padding: 16px; color: #94a3b8; font-size: 12px; font-style: italic;">
               Nenhuma sugestão enviada ainda.
+            </div>
+          </div>
+        </div>
+
+        <!-- Localizações Personalizadas -->
+        <div>
+          <p class="profile-section-title" style="padding-left:4px">📍 Localizações Personalizadas</p>
+          <div class="flex flex-col gap-2">
+            <!-- Form to add new location -->
+            <div class="settings-row" style="flex-direction: column; align-items: stretch; padding: 16px; gap: 12px;">
+              <p style="font-size: 11px; font-weight: 700; color: #475569; margin: 0; text-transform: uppercase; letter-spacing: 0.05em;">Adicionar Localização</p>
+              
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <label style="font-size: 10px; font-weight: 600; color: #475569;">Nome (ex: Casa, Trabalho):</label>
+                <input v-model="newLocForm.name" type="text" placeholder="Nome identificador" style="padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.1); font-size: 12px; outline: none; background: white;" />
+              </div>
+              
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <label style="font-size: 10px; font-weight: 600; color: #475569;">Tipo de Entrada:</label>
+                <select v-model="newLocForm.inputType" style="padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.1); font-size: 12px; outline: none; cursor: pointer; background: white;">
+                  <option value="address">Endereço (Texto)</option>
+                  <option value="coords">Coordenadas (Lat / Lon)</option>
+                </select>
+              </div>
+              
+              <!-- Address Input -->
+              <div v-if="newLocForm.inputType === 'address'" style="display: flex; flex-direction: column; gap: 6px;">
+                <label style="font-size: 10px; font-weight: 600; color: #475569;">Endereço Completo:</label>
+                <input v-model="newLocForm.address" type="text" placeholder="Ex: Av. Paulista, 1000, São Paulo" style="padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.1); font-size: 12px; outline: none; background: white;" />
+              </div>
+              
+              <!-- Coordinates Input -->
+              <div v-else style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                  <label style="font-size: 10px; font-weight: 600; color: #475569;">Latitude:</label>
+                  <input v-model="newLocForm.latitude" type="number" step="any" placeholder="-23.5616" style="padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.1); font-size: 12px; outline: none; background: white;" />
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                  <label style="font-size: 10px; font-weight: 600; color: #475569;">Longitude:</label>
+                  <input v-model="newLocForm.longitude" type="number" step="any" placeholder="-46.6561" style="padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.1); font-size: 12px; outline: none; background: white;" />
+                </div>
+              </div>
+              
+              <button @click="submitAddLocation" class="btn-xp green-btn" style="padding: 8px 14px; font-size: 11px; align-self: flex-end; margin-top: 4px;">
+                Salvar Localização 💾
+              </button>
+            </div>
+            
+            <!-- List of saved locations -->
+            <div class="settings-row" style="flex-direction: column; align-items: stretch; padding: 12px 16px; gap: 8px;">
+              <p style="font-size: 11px; font-weight: 700; color: #475569; margin: 0; text-transform: uppercase; letter-spacing: 0.05em;">Minhas Localizações</p>
+              
+              <div v-if="customLocations && customLocations.length > 0" style="max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; width: 100%;" class="no-scroll">
+                <div v-for="loc in customLocations" :key="loc.id" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; background: rgba(0,0,0,0.02); border-radius: 10px; border: 0.5px solid rgba(0,0,0,0.04); width: 100%; box-sizing: border-box;">
+                  <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; text-align: left;">
+                    <span style="font-size: 12px; font-weight: 700; color: #1e293b;">📍 {{ loc.name }}</span>
+                    <span style="font-size: 10px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px;" :title="loc.address">
+                      {{ loc.address || 'Sem endereço' }}
+                    </span>
+                    <span v-if="loc.latitude != null && loc.longitude != null" style="font-size: 9px; color: #94a3b8;">
+                      Coords: {{ loc.latitude.toFixed(4) }}, {{ loc.longitude.toFixed(4) }}
+                    </span>
+                  </div>
+                  <button @click="emit('delete-custom-location', loc.id)" style="background: none; border: none; color: #ef4444; font-size: 14px; cursor: pointer; padding: 4px; font-weight: bold; flex-shrink: 0;" title="Excluir">
+                    🗑️
+                  </button>
+                </div>
+              </div>
+              <div v-else style="font-size: 11px; color: #94a3b8; font-style: italic; padding: 8px 0; text-align: center; width: 100%;">
+                Nenhuma localização personalizada salva.
+              </div>
             </div>
           </div>
         </div>
