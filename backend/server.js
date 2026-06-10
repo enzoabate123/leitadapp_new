@@ -706,6 +706,82 @@ fastify.get('/api/users/:id/profile', { preHandler: authenticate }, async (reque
   };
 });
 
+// GET /api/users/:id/trips
+fastify.get('/api/users/:id/trips', { preHandler: authenticate }, async (request, reply) => {
+  const targetUserId = parseInt(request.params.id, 10);
+  if (isNaN(targetUserId)) {
+    return reply.code(400).send({ error: 'ID de usuário inválido' });
+  }
+
+  const targetUser = await prisma.user.findUnique({
+    where: { id: targetUserId },
+    select: { username: true }
+  });
+
+  if (!targetUser) {
+    return reply.code(404).send({ error: 'Usuário não encontrado' });
+  }
+
+  // 1. Driven trips
+  const drivenTrips = await prisma.trip.findMany({
+    where: { userId: targetUserId },
+    include: {
+      user: { select: { username: true } },
+      waypoints: { orderBy: { order: 'asc' } },
+      media: true
+    }
+  });
+
+  // 2. Passenger trips
+  const passengerMedias = await prisma.tripMedia.findMany({
+    where: { type: 'passenger', content: targetUser.username },
+    include: {
+      trip: {
+        include: {
+          user: { select: { username: true } },
+          waypoints: { orderBy: { order: 'asc' } },
+          media: true
+        }
+      }
+    }
+  });
+  const passengerTrips = passengerMedias.map(pm => pm.trip).filter(Boolean);
+
+  // 3. Deduplicate
+  const tripMap = new Map();
+  for (const t of drivenTrips) {
+    tripMap.set(t.id, t);
+  }
+  for (const t of passengerTrips) {
+    tripMap.set(t.id, t);
+  }
+
+  // Sort by id desc (newest first)
+  const allTrips = Array.from(tripMap.values()).sort((a, b) => b.id - a.id);
+
+  // Format response
+  const formattedTrips = allTrips.map(trip => {
+    const waypoints = trip.waypoints.map(w => w.address);
+    const passengers = trip.media
+      .filter(m => m.type === 'passenger')
+      .map(m => m.content);
+
+    return {
+      id: trip.id,
+      name: trip.name || `Corrida #${trip.id}`,
+      createdAt: trip.createdAt,
+      driver: trip.user.username,
+      startLocation: trip.startLocation,
+      endLocation: trip.endLocation,
+      waypoints,
+      passengers
+    };
+  });
+
+  return formattedTrips;
+});
+
+
 // POST /api/trips
 fastify.post('/api/trips', { preHandler: authenticate }, async (request, reply) => {
   const userId = request.userId;

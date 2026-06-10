@@ -3,6 +3,8 @@ import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import UserAvatar from './UserAvatar.vue';
+import { API_URL } from '../../utils/api';
+
 
 const props = defineProps({
   username: String,
@@ -185,6 +187,40 @@ onUnmounted(() => {
     profileMap.value = null;
   }
 });
+
+const showTripsModal = ref(false);
+const tripsList = ref([]);
+const isLoadingTrips = ref(false);
+
+async function openTripsModal() {
+  showTripsModal.value = true;
+  isLoadingTrips.value = true;
+  tripsList.value = [];
+  try {
+    const token = localStorage.getItem('token');
+    const headers = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(`${API_URL}/api/users/${props.userId}/trips`, { headers });
+    if (!res.ok) throw new Error('Falha ao buscar viagens');
+    tripsList.value = await res.json();
+  } catch (err) {
+    console.error('Error fetching user trips:', err);
+  } finally {
+    isLoadingTrips.value = false;
+  }
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
 </script>
 
 <template>
@@ -386,7 +422,7 @@ onUnmounted(() => {
                 <span style="font-size: 8px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-top: 2px;">Pontos</span>
               </div>
               <!-- Trips Count -->
-              <div class="metric-card" style="min-width: 0; padding: 8px 4px;">
+              <div class="metric-card" style="min-width: 0; padding: 8px 4px; cursor: pointer;" @click="openTripsModal">
                 <div class="metric-card-icon bg-purple-100" style="color: #7c3aed;">
                   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
@@ -422,6 +458,81 @@ onUnmounted(() => {
       </div>
     </div>
   </div>
+
+  <!-- Modal de Viagens -->
+  <transition name="modal-fade">
+    <div v-if="showTripsModal" class="trips-modal-overlay" @click.self="showTripsModal = false">
+      <div class="trips-modal-card">
+        <button class="trips-modal-close" @click="showTripsModal = false">✕</button>
+        
+        <h3 class="trips-modal-title">
+          {{ isOwnProfile ? 'Suas Viagens' : `Viagens de ${username}` }}
+        </h3>
+        
+        <div v-if="isLoadingTrips" class="trips-modal-loading">
+          <div class="spinner"></div>
+          <span>Carregando histórico...</span>
+        </div>
+        
+        <div v-else-if="tripsList.length === 0" class="trips-modal-empty">
+          <span class="empty-icon">🚗</span>
+          <p>Nenhuma viagem registrada.</p>
+        </div>
+        
+        <div v-else class="trips-modal-body">
+          <div v-for="trip in tripsList" :key="trip.id" class="trip-item-card">
+            <div class="trip-item-header">
+              <span class="trip-item-name">{{ trip.name || `Corrida #${trip.id}` }}</span>
+              <span class="trip-item-date">{{ formatDate(trip.createdAt) }}</span>
+            </div>
+            
+            <div class="trip-item-route">
+              <div class="route-node">
+                <span class="node-bullet green">🟢</span>
+                <div class="node-details">
+                  <span class="node-label">Origem</span>
+                  <span class="node-val">{{ trip.startLocation || 'Não informada' }}</span>
+                </div>
+              </div>
+              
+              <div v-if="trip.waypoints && trip.waypoints.length > 0" class="route-waypoints">
+                <div v-for="(wp, wIdx) in trip.waypoints" :key="wIdx" class="route-node waypoint">
+                  <span class="node-bullet orange">🟠</span>
+                  <div class="node-details">
+                    <span class="node-label">Parada {{ wIdx + 1 }}</span>
+                    <span class="node-val">{{ wp }}</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="route-node">
+                <span class="node-bullet red">🏁</span>
+                <div class="node-details">
+                  <span class="node-label">Destino</span>
+                  <span class="node-val">{{ trip.endLocation || 'Não informado' }}</span>
+                </div>
+              </div>
+            </div>
+            
+            <div class="trip-item-footer">
+              <div class="participant-info">
+                <span class="participant-title">Motorista:</span>
+                <span class="participant-name">👤 {{ trip.driver }}</span>
+              </div>
+              <div v-if="trip.passengers && trip.passengers.length > 0" class="participant-info">
+                <span class="participant-title">Caronas:</span>
+                <div class="participant-names">
+                  <span v-for="passenger in trip.passengers" :key="passenger" class="passenger-tag">
+                    👤 {{ passenger }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </transition>
 </template>
 
 <style scoped>
@@ -434,5 +545,243 @@ onUnmounted(() => {
 .banner-btn:hover {
   transform: scale(1.08);
   box-shadow: 0 6px 16px rgba(0,0,0,0.25) !important;
+}
+
+/* Modal de Histórico de Viagens */
+.trips-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20000;
+}
+.trips-modal-card {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  color: #1e293b;
+  border-radius: 28px;
+  width: 90%;
+  max-width: 500px;
+  max-height: 80vh;
+  padding: 28px 24px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+.trips-modal-close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.05);
+  border: none;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #475569;
+  transition: all 0.2s;
+}
+.trips-modal-close:hover {
+  background: rgba(0, 0, 0, 0.1);
+  color: #0f172a;
+}
+.trips-modal-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 20px 0;
+  text-align: center;
+}
+.trips-modal-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px 0;
+  font-weight: 600;
+  color: #64748b;
+  font-size: 13px;
+}
+.spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid rgba(147, 51, 234, 0.1);
+  border-top-color: #9333ea;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.trips-modal-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px 0;
+  color: #94a3b8;
+}
+.empty-icon {
+  font-size: 32px;
+}
+.trips-modal-empty p {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.trips-modal-body {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-right: 4px;
+}
+.trips-modal-body::-webkit-scrollbar {
+  width: 6px;
+}
+.trips-modal-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+.trips-modal-body::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.1);
+  border-radius: 3px;
+}
+.trips-modal-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(0,0,0,0.2);
+}
+.trip-item-card {
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-radius: 20px;
+  padding: 16px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: left;
+}
+.trip-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.trip-item-name {
+  font-weight: 800;
+  font-size: 14px;
+  color: #0f172a;
+}
+.trip-item-date {
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.trip-item-route {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-left: 4px;
+  border-left: 2px dashed #cbd5e1;
+  margin-left: 8px;
+}
+.route-node {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  position: relative;
+  margin-left: -9px;
+}
+.route-node.waypoint {
+  margin-top: 2px;
+  margin-bottom: 2px;
+}
+.node-bullet {
+  font-size: 12px;
+  line-height: 1;
+  background: #ffffff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.node-details {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+}
+.node-label {
+  font-size: 8px;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+.node-val {
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  line-height: 1.2;
+}
+.trip-item-footer {
+  border-top: 1px solid #f1f5f9;
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.participant-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+.participant-title {
+  font-weight: 700;
+  color: #64748b;
+  min-width: 65px;
+  text-align: left;
+}
+.participant-name {
+  font-weight: 600;
+  color: #334155;
+}
+.participant-names {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.passenger-tag {
+  background: rgba(15, 23, 42, 0.05);
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-weight: 600;
+  color: #475569;
+  font-size: 10px;
+}
+
+/* Modal Fade Transition */
+.modal-fade-enter-active,
+.modal-fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+.modal-fade-enter-from,
+.modal-fade-leave-to {
+  opacity: 0;
 }
 </style>
